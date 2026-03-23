@@ -934,9 +934,60 @@ function TeamView(){
 function RequestsView(){
   const [modal,setModal]=useState(null);
   const [reqs,setReqs]=useState(REQS);
+  const reqsRef = React.useRef(REQS); // Always-current ref for async handlers
   const [reqLoading,setReqLoading]=useState(true);
-  // Update global badge count so sidebar can read it
+  // Keep ref in sync with state
+  useEffect(()=>{ reqsRef.current = reqs; },[reqs]);
   useEffect(()=>{ if(!reqLoading) window.__pendingReqs = reqs.length; },[reqs, reqLoading]);
+  // Named handlers — defined once in component scope, always see current closure
+  const handleApprove = async (reqId) => {
+    const r = reqsRef.current.find(x => x.id === reqId);
+    if(!r) { console.error('[handleApprove] r not found for id', reqId); return; }
+    console.log('[handleApprove] r=', JSON.stringify(r));
+    setReqs(prev=>prev.filter(x=>x.id!==reqId));
+    if(!reqId || !reqId.includes('-')) return;
+    const empId = r.requester_id;
+    console.log('[handleApprove] type='+r.type+' empId='+empId?.substring(0,8)+' vacStart='+r.vacation_start);
+    if(r.type==='vacaciones' && empId && r.vacation_start && r.vacation_end){
+      const days=[]; let cur=r.vacation_start;
+      while(cur<=r.vacation_end){
+        days.push(cur);
+        const dd=new Date(cur+'T12:00:00'); dd.setDate(dd.getDate()+1);
+        cur=dd.toISOString().split('T')[0];
+      }
+      console.log('[handleApprove vac] days=',days);
+      for(const day of days){
+        const {error:ev}=await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});
+        if(ev) console.error('[handleApprove] upsert error',day,ev.message);
+        else console.log('[handleApprove] V ok',day);
+      }
+      const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
+      if(bal){ await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026); console.log('[handleApprove] balance ok, quedan',(bal.days_total-bal.days_used-days.length)); }
+      [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+      console.log('[handleApprove vac] DONE calVer='+window.__calendarVersion);
+    } else if(r.type==='cambio' && empId && r.requester_date && r.target_date && r.target_id){
+      const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
+      const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
+      if(s1?.id) await sb.from('shifts').delete().eq('id',s1.id);
+      if(s2?.id) await sb.from('shifts').delete().eq('id',s2.id);
+      if(s2?.shift_type) await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
+      if(s1?.shift_type) await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
+      [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+      console.log('[handleApprove swap] DONE');
+    } else {
+      console.warn('[handleApprove] condición no cumplida: type='+r.type+' empId='+empId+' vacStart='+r.vacation_start+' vacEnd='+r.vacation_end);
+    }
+    await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',reqId);
+    console.log('[handleApprove] COMPLETADO');
+  };
+
+  const handleReject = async (reqId) => {
+    setReqs(prev=>prev.filter(x=>x.id!==reqId));
+    if(reqId && reqId.includes('-')) await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',reqId);
+  };
+
   const loadReqs = ()=>{
     setReqLoading(true);
     fetchPendingRequests().then(data=>{
@@ -982,41 +1033,8 @@ function RequestsView(){
             <div className="req-desc">{r.desc}</div>
           </div>
           <div className="req-actions">
-                          <button className="btn btn-ok btn-sm" onClick={async()=>{
-                setReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(!r.id||!r.id.includes('-'))return;
-                const empId=r.requester_id;
-                if(r.type==='vacaciones'&&empId&&r.vacation_start&&r.vacation_end){
-                  const days=[];let cur=r.vacation_start;
-                  while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
-                  console.log('[Aprobar vac]',days.length,'dias para',r.name);
-                  for(const day of days){
-                    const {error:ev}=await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});
-                    if(ev)console.error('[Aprobar]',day,ev.message);
-                  }
-                  const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
-                  if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
-                  const mkeys=[...new Set(days.map(d=>d.substring(0,7)))];
-                  mkeys.forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                  console.log('[Aprobar vac] DONE calVer='+window.__calendarVersion);
-                }else if(r.type==='cambio'&&empId&&r.requester_date&&r.target_date&&r.target_id){
-                  const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
-                  const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
-                  if(s1?.id)await sb.from('shifts').delete().eq('id',s1.id);
-                  if(s2?.id)await sb.from('shifts').delete().eq('id',s2.id);
-                  if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
-                  if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
-                  [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                  console.log('[Aprobar swap] DONE');
-                }
-                await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✓ Aprobar</button>
-              <button className="btn btn-danger btn-sm" onClick={async()=>{
-                setReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(r.id&&r.id.includes('-'))await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✗ Rechazar</button>
+                          <button className="btn btn-ok btn-sm" onClick={()=>handleApprove(r.id)}>✓ Aprobar</button>
+              <button className="btn btn-danger btn-sm" onClick={()=>handleReject(r.id)}>✗ Rechazar</button>
           </div>
         </div>
       ))}
@@ -1268,8 +1286,10 @@ function AdminView(){
 
       {/* Solicitudes pendientes */}
       <div className="card" style={{marginBottom:16}}>
-        <div className="card-header"><span className="card-title">Solicitudes pendientes</span><span className="notif">{REQS.length}</span></div>
-        {REQS.map(r=>(
+        <div className="card-header"><span className="card-title">Solicitudes pendientes</span><span className="notif">{adminReqs.length}</span></div>
+        {adminReqsLoading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando...</div>}
+        {!adminReqsLoading&&adminReqs.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes pendientes.</div>}
+        {adminReqs.map(r=>(
           <div key={r.id} className="req-item">
             <div className="req-av">{r.av}</div>
             <div className="req-info">
@@ -1859,7 +1879,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v3.0 — Botones inline</div>
+            <div style={{marginBottom:3}}>v3.1 — useRef + handleApprove</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
