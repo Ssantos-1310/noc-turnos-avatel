@@ -465,6 +465,37 @@ async function rejectRequest(reqId, notes = '') {
   return error;
 }
 
+// ── APPROVE WRAPPER — re-fetcha datos completos de BD antes de aprobar ──────
+async function approveRequestById(requestId, optimisticType) {
+  // Fetch the full request from DB to avoid stale closure data
+  const { data: req, error } = await sb.from('shift_requests')
+    .select('id, request_type, requester_date, target_date, vacation_start, vacation_end, requester:requester_id(id, full_name, short_name), target:target_id(id, full_name, short_name)')
+    .eq('id', requestId)
+    .single();
+
+  if (error || !req) {
+    console.error('[approveRequestById] Cannot fetch request:', error?.message);
+    return [`Cannot fetch request: ${error?.message}`];
+  }
+
+  // Build a clean req object with all needed fields
+  const fullReq = {
+    id: req.id,
+    type: req.request_type === 'swap' ? 'cambio' : 'vacaciones',
+    name: req.requester?.full_name,
+    requester_id: req.requester?.id,
+    target_id: req.target?.id,
+    target_name: req.target?.full_name,
+    requester_date: req.requester_date,
+    target_date: req.target_date,
+    vacation_start: req.vacation_start,
+    vacation_end: req.vacation_end
+  };
+
+  console.log('[approveRequestById] Full req from DB:', JSON.stringify(fullReq));
+  return await approveRequest(fullReq);
+}
+
 async function fetchEmployees() {
   const { data } = await sb.from('employees').select('*').order('role').order('full_name');
   return data || [];
@@ -1818,7 +1849,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.9 — Cache fix definitivo</div>
+            <div style={{marginBottom:3}}>v3.0 — Approve BD directo</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
