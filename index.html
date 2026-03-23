@@ -332,7 +332,7 @@ const SD={"enero":{"Zhou Hongxuan":["","","","","","","","","","","","","","",""
 
 const REC={"Zhou Hongxuan":{"M":39,"T":34,"N":28,"V":0,"B":2,"D":0,"h":824},"Hector Verdu":{"M":57,"T":22,"N":21,"V":4,"B":0,"D":0,"h":832},"Manuel Saelices":{"M":15,"T":26,"N":7,"V":0,"B":55,"D":0,"h":824},"Sergio Vara":{"M":29,"T":45,"N":21,"V":5,"B":0,"D":0,"h":824},"Francisco Castaño":{"M":43,"T":35,"N":18,"V":0,"B":0,"D":3,"h":800},"Mario Saavedra":{"M":32,"T":35,"N":32,"V":0,"B":0,"D":1,"h":816},"Juan Carlos":{"M":34,"T":35,"N":21,"V":4,"B":0,"D":0,"h":816},"Carlos Alberto":{"M":31,"T":39,"N":28,"V":0,"B":0,"D":4,"h":824},"Ruben Culebras":{"M":23,"T":46,"N":31,"V":3,"B":0,"D":1,"h":824},"Sergio Luque":{"M":37,"T":33,"N":21,"V":11,"B":0,"D":1,"h":816},"Valentina Vargas":{"M":38,"T":46,"N":21,"V":0,"B":0,"D":0,"h":840},"Pedro Ayuso":{"M":43,"T":34,"N":19,"V":0,"B":0,"D":0,"h":840},"Hector Lamus":{"M":36,"T":34,"N":21,"V":0,"B":7,"D":1,"h":800},"Leandro Yorlan":{"M":43,"T":39,"N":21,"V":0,"B":0,"D":3,"h":824}};
 
-const FEST=["2026-01-01","2026-01-06","2026-03-19","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-06-24","2026-07-25","2026-08-15","2026-10-12","2026-11-01","2026-11-09","2026-12-08","2026-12-25"];
+const FEST=["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-06-24","2026-07-25","2026-08-15","2026-10-12","2026-11-01","2026-11-09","2026-12-08","2026-12-25"];
 const EMPS=["Hector Jose Lamus Moreno","Hector Verdu Relaño","Francisco Castaño Montouto","Mario Saavedra Mateo","Ruben Culebras Blanco","Manuel Saelices Escolar","Marianela Beatriz Vasquez Guardia","Pedro Pablo Ayuso Muñoz","Juan Carlos Farfan Mallaupoma","Leandro Yorlan Roman Jaimes","Sergio Vara","Zhou Hongxuan","Valentina Vargas Moreno","Sergio Luque Lavado","Carlos Alberto Hilleshein","Manuel Loro Sanchez de Pablo","Jose Luis Carrillo Sierra"];
 // Short name → full name mapping for shift data lookup
 const EMP_SHORT={"Hector Jose Lamus Moreno":"Hector Lamus","Hector Verdu Relaño":"Hector Verdu","Francisco Castaño Montouto":"Francisco Castaño","Mario Saavedra Mateo":"Mario Saavedra","Ruben Culebras Blanco":"Ruben Culebras","Manuel Saelices Escolar":"Manuel Saelices","Marianela Beatriz Vasquez Guardia":"Marianela Beatriz","Pedro Pablo Ayuso Muñoz":"Pedro Ayuso","Juan Carlos Farfan Mallaupoma":"Juan Carlos","Leandro Yorlan Roman Jaimes":"Leandro Yorlan","Sergio Vara":"Sergio Vara","Zhou Hongxuan":"Zhou Hongxuan","Valentina Vargas Moreno":"Valentina Vargas","Sergio Luque Lavado":"Sergio Luque","Carlos Alberto Hilleshein":"Carlos Alberto","Manuel Loro Sanchez de Pablo":"Manuel Loro","Jose Luis Carrillo Sierra":"Jose Luis Carrillo"};
@@ -640,7 +640,9 @@ function TeamView(){
   }
 
   const ed=useMemo(()=>EMPS.map(emp=>{
-    const r=REC[emp]||{};const h=r.h||0;const j=(r.M||0)+(r.T||0)+(r.N||0);const eh=(r.D||0)*8;
+    // REC uses short names, EMPS uses full names — map via EMP_SHORT
+    const shortKey=EMP_SHORT[emp]||emp;
+    const r=REC[shortKey]||{};const h=r.h||0;const j=(r.M||0)+(r.T||0)+(r.N||0);const eh=(r.D||0)*8;
     const hst=h>HMAX?'bad':h>HMAX*.92?'warn':'ok';
     return{emp,r,h,j,eh,hst};
   }),[]);
@@ -730,14 +732,24 @@ function RequestsView(){
   const [reqLoading,setReqLoading]=useState(true);
   useEffect(()=>{
     fetchPendingRequests().then(data=>{
-      if(data.length>0)setReqs(data.map(r=>({
-        id:r.id,
-        type:r.request_type==='swap'?'cambio':'vacaciones',
-        name:r.requester?.full_name||'–',
-        av:(r.requester?.full_name||'??').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase(),
-        desc:r.request_type==='swap'?`Cambio ${r.requester_date} → ${r.target_date}`:`Vacaciones ${r.vacation_start} – ${r.vacation_end}`,
-        date:new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'})
-      })));
+      // Always update — use DB data if available, else keep hardcoded examples
+      const mapped = data.map(r=>({
+        id: r.id,
+        type: r.request_type==='swap'?'cambio':'vacaciones',
+        name: r.requester?.full_name||'–',
+        av: (r.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
+        desc: r.request_type==='swap'
+          ? `Cambio ${r.requester_date||''} → ${r.target_date||''}`
+          : `Vacaciones ${r.vacation_start||''} – ${r.vacation_end||''}`,
+        date: new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
+        requester_date: r.requester_date,
+        target_date: r.target_date,
+        requester_shift: r.requester_shift,
+        target_shift: r.target_shift,
+        target_name: r.target?.full_name
+      }));
+      // Merge: DB rows first, then hardcoded examples that don't have a real ID
+      setReqs(mapped.length > 0 ? mapped : REQS);
       setReqLoading(false);
     });
   },[]);
@@ -804,6 +816,15 @@ function AdminView(){
   const [showNE,setShowNE]=useState(false);
   const [diagResults,setDiagResults]=useState(null);
   const [diagLoading,setDiagLoading]=useState(false);
+  const [empList,setEmpList]=useState([]);
+  const [empLoading,setEmpLoading]=useState(true);
+
+  useEffect(()=>{
+    fetchEmployees().then(data=>{
+      setEmpList(data||[]);
+      setEmpLoading(false);
+    });
+  },[]);
   const [rules,setRules]=useState(INIT_RULES);
   const [editRules,setEditRules]=useState(false);
   const [draftRules,setDraftRules]=useState(null);
@@ -884,14 +905,23 @@ function AdminView(){
             <span className="card-title">Gestión de operadores</span>
             <button className="btn btn-primary" style={{fontSize:12}} onClick={()=>setShowNE(true)}>+ Alta operador</button>
           </div>
-          <div className="alert alert-warn"><span>⚡</span><span>2 incorporaciones pendientes. Objetivo: 21–22 operadores.</span></div>
-          <table className="emp-table" style={{marginTop:8}}>
-            <thead><tr><th>Operador</th><th>Estado</th><th></th></tr></thead>
-            <tbody>
-              {EMPS.slice(0,6).map(e=><tr key={e}><td style={{fontWeight:500}}>{e}</td><td><span className="pill pill-ok">Activo</span></td><td><button className="btn btn-ghost btn-sm">Editar</button></td></tr>)}
-              <tr><td style={{fontWeight:500}}>Manuel Saelices</td><td><span className="pill pill-bad">Baja</span></td><td><button className="btn btn-ghost btn-sm">Editar</button></td></tr>
-            </tbody>
-          </table>
+          <div className="alert alert-warn"><span>⚡</span><span>{empLoading?'Cargando...':`${empList.filter(e=>e.active).length} operadores activos. Objetivo: 21–22 operadores.`}</span></div>
+          {empLoading
+            ? <div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando operadores...</div>
+            : <table className="emp-table" style={{marginTop:8}}>
+                <thead><tr><th>Operador</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                  {empList.filter(e=>e.role==='operator'||e.role==='coordinator'||e.role==='manager'||e.role==='admin').map(e=>(
+                    <tr key={e.id}>
+                      <td style={{fontWeight:500}}>{e.full_name}</td>
+                      <td><span style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize'}}>{e.role}</span></td>
+                      <td><span className={`pill ${e.active?'pill-ok':'pill-bad'}`}>{e.active?'Activo':'Inactivo'}</span></td>
+                      <td><button className="btn btn-ghost btn-sm">Editar</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+          }
         </div>
 
         {/* Coverage rules — editable */}
@@ -1384,7 +1414,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.2 — Fixes BD</div>
+            <div style={{marginBottom:3}}>v2.3 — Full fixes</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
