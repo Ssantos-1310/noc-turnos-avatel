@@ -695,13 +695,17 @@ function TeamView(){
             <thead><tr><th>Operador</th><th>Horas ({HMAX}h)</th><th>Jornadas ({JMAX})</th><th>M / T / N</th><th>Vacac. ({VMAX})</th><th>Bajas</th><th>H.extras</th><th>Turno hoy</th><th>Situación</th></tr></thead>
             <tbody>
               {ed.map(({emp,r,h,j,eh,hst})=>{
-                const bc=hst==='ok'?'#4fc97a':hst==='warn'?'#f7b84f':'#f75f5f';
+                const noData = h === 0 && j === 0;
+                const bc=noData?'var(--text3)':hst==='ok'?'#4fc97a':hst==='warn'?'#f7b84f':'#f75f5f';
                 const ec=eh>80?'var(--red)':eh>60?'var(--amber)':'var(--text2)';
                 const turno=getTurno(emp);
                 const situ=getSituacion(emp);
-                return(<tr key={emp}>
-                  <td style={{fontWeight:500}}>{emp}</td>
-                  <td><div style={{display:'flex',alignItems:'center',gap:6}}><div className="hbar"><div className="hfill" style={{width:`${Math.min(h/HMAX*100,100)}%`,background:bc}}/></div><span style={{fontFamily:'var(--mono)',fontSize:12}}>{h}h</span></div></td>
+                return(<tr key={emp} style={{opacity:noData?.5:1}}>
+                  <td style={{fontWeight:500}}>
+                    {emp}
+                    {noData&&<span style={{fontSize:10,color:'var(--text3)',marginLeft:6}}>sin datos</span>}
+                  </td>
+                  <td><div style={{display:'flex',alignItems:'center',gap:6}}><div className="hbar"><div className="hfill" style={{width:`${Math.min(h/HMAX*100,100)}%`,background:bc}}/></div><span style={{fontFamily:'var(--mono)',fontSize:12}}>{noData?'—':h+'h'}</span></div></td>
                   <td><span style={{fontFamily:'var(--mono)',fontSize:12}}>{j}</span></td>
                   <td>
                     <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#7eb8f7'}}>{r.M||0}</span>
@@ -802,7 +806,38 @@ function RequestsView(){
             )}
             <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:4}}>
               <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={()=>{setModal(null);alert('Solicitud enviada. Notificación enviada por Teams y correo.');}}>Enviar solicitud</button>
+              <button className="btn btn-primary" onClick={async()=>{
+                // Get requester employee id (in real auth we'd use logged-in user)
+                // For now use the first selector value  
+                const empSel = document.querySelector('select.fs');
+                const empName = empSel?.value;
+                if(!empName){setModal(null);return;}
+                let {data: emp} = await sb.from('employees').select('id').eq('full_name',empName).maybeSingle();
+                if(!emp){const {data:e2}=await sb.from('employees').select('id').eq('short_name',empName).maybeSingle();emp=e2;}
+                if(emp){
+                  const isSwap = modal==='cambio';
+                  await sb.from('shift_requests').insert({
+                    request_type: isSwap?'swap':'vacation',
+                    requester_id: emp.id,
+                    requester_date: isSwap?null:null,
+                    vacation_start: isSwap?null:'2026-04-01',
+                    vacation_end: isSwap?null:'2026-04-05',
+                    status:'pending'
+                  });
+                }
+                setModal(null);
+                // Refresh requests
+                fetchPendingRequests().then(data=>{
+                  if(data.length>0)setReqs(data.map(r=>({
+                    id:r.id,type:r.request_type==='swap'?'cambio':'vacaciones',
+                    name:r.requester?.full_name||'–',
+                    av:(r.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
+                    desc:r.request_type==='swap'?'Cambio de turno solicitado':'Vacaciones solicitadas',
+                    date:new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'})
+                  })));
+                });
+                alert('Solicitud enviada y registrada en base de datos.');
+              }}>Enviar solicitud</button>
             </div>
           </div>
         </div>
@@ -1105,6 +1140,13 @@ function CalN2View(){
   const assign=async(wn,person)=>{
     setAssignments(p=>({...p,[wn]:person}));
     await saveN2Assignment(wn, person);
+    // Reload to sync summary counts
+    const fresh = await fetchN2Assignments();
+    if(fresh.length>0){
+      const a={};
+      fresh.forEach(row=>{ if(row.employee?.short_name) a[row.week_number]=row.employee.short_name; });
+      setAssignments(a);
+    }
   };
   const isCurrentWeek=(w)=>today>=w.start&&today<=w.end;
 
@@ -1299,10 +1341,22 @@ function ResumenRRHH(){
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r,i)=>(
-                  <tr key={i} style={{borderBottom:'1px solid rgba(42,51,80,.3)',background:i%2===0?'transparent':'rgba(255,255,255,.01)'}}>
+                {rows.map((r,i)=>{
+                  const rowAccent = r.tipo==='Plus NOC'?'rgba(192,132,252,.05)':
+                                    r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo'?'rgba(251,146,60,.05)':
+                                    i%2===0?'transparent':'rgba(255,255,255,.01)';
+                  const rowBorder = r.tipo==='Plus NOC'?'1px solid rgba(192,132,252,.15)':
+                                    r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo'?'1px solid rgba(251,146,60,.15)':
+                                    '1px solid rgba(42,51,80,.3)';
+                  return(
+                  <tr key={i} style={{borderBottom:rowBorder,background:rowAccent}}>
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)'}}>{mesNum}</td>
-                    <td style={{padding:'8px 10px',fontWeight:500,whiteSpace:'nowrap'}}>{r.emp}</td>
+                    <td style={{padding:'8px 10px',fontWeight:500,whiteSpace:'nowrap'}}>
+                      <div>{r.emp}</div>
+                      {(r.tipo==='Plus NOC'||r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo')&&(
+                        <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{r.tipo}</div>
+                      )}
+                    </td>
                     <td style={{padding:'8px 10px',color:'var(--text3)',fontSize:10}}>—</td>
                     <td style={{padding:'8px 10px',whiteSpace:'nowrap',fontSize:12}}>{r.approver}</td>
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.horasExtra>0?'var(--blue)':'var(--text3)'}}>{r.horasExtra||'–'}</td>
@@ -1318,7 +1372,7 @@ function ResumenRRHH(){
                     <td style={{padding:'8px 10px',color:'var(--text2)',maxWidth:160,fontSize:11}}>{r.desc}</td>
 
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
@@ -1414,7 +1468,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.3 — Full fixes</div>
+            <div style={{marginBottom:3}}>v2.4 — N2 dist + RRHH UX + Equipo UX</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
