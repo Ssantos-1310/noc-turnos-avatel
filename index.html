@@ -188,7 +188,7 @@ async function fetchShiftsForMonth(monthIdx) {
   const end = `${key}-31`;
   const { data, error } = await sb
     .from('shifts')
-    .select('shift_date, shift_type, employees(short_name)')
+    .select('shift_date, shift_type, employee:employee_id(short_name)')
     .gte('shift_date', start)
     .lte('shift_date', end);
   if (error) { console.error('fetchShifts error', error); return {}; }
@@ -196,7 +196,7 @@ async function fetchShiftsForMonth(monthIdx) {
   const result = {};
   if (data) {
     data.forEach(row => {
-      const sn = row.employees?.short_name;
+      const sn = row.employee?.short_name;
       if (!sn) return;
       const day = new Date(row.shift_date + 'T00:00:00').getDate() - 1;
       if (!result[sn]) result[sn] = Array(31).fill('');
@@ -208,9 +208,13 @@ async function fetchShiftsForMonth(monthIdx) {
 }
 
 async function saveShift(employeeShortName, date, shiftType) {
-  // Get employee id
-  const { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).single();
-  if (!emp) return { error: 'Empleado no encontrado' };
+  // Get employee id - try short_name first, then full_name
+  let { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).maybeSingle();
+  if (!emp) {
+    const { data: emp2 } = await sb.from('employees').select('id').eq('full_name', employeeShortName).maybeSingle();
+    emp = emp2;
+  }
+  if (!emp) { console.error('saveShift: empleado no encontrado:', employeeShortName); return { error: 'Empleado no encontrado' }; }
   const { error } = await sb.from('shifts').upsert(
     { employee_id: emp.id, shift_date: date, shift_type: shiftType },
     { onConflict: 'employee_id,shift_date' }
@@ -243,14 +247,18 @@ async function insertRule(rule) {
 
 async function fetchN2Assignments() {
   const { data } = await sb.from('n2_assignments')
-    .select('week_number, has_festivo, importe_base, importe_festivo, employees(short_name, full_name)')
+    .select('week_number, has_festivo, importe_base, importe_festivo, employee:employee_id(short_name, full_name)')
     .eq('year', 2026)
     .order('week_number');
   return data || [];
 }
 
 async function saveN2Assignment(weekNumber, employeeShortName) {
-  const { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).single();
+  let { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).maybeSingle();
+  if (!emp) {
+    const { data: emp2 } = await sb.from('employees').select('id').eq('full_name', employeeShortName).maybeSingle();
+    emp = emp2;
+  }
   if (!emp) return;
   await sb.from('n2_assignments').update({ employee_id: emp.id }).eq('week_number', weekNumber).eq('year', 2026);
 }
@@ -275,9 +283,23 @@ async function runDiagnostics() {
     results.coverage_rules = e4 ? `ERROR: ${e4.message}` : `OK (${cr?.count||'?'} rows)`;
   } catch(e){ results.coverage_rules = `EXCEPTION: ${e.message}`; }
   try {
-    // Test write: upsert a test coverage rule and delete it
-    const { error: ew } = await sb.from('coverage_rules').select('id').limit(1).single();
-    results.write_test = ew ? `WARN: ${ew.message}` : 'OK (read confirmed)';
+    // Test write on shifts (upsert with fake data then verify)
+    const testDate = '2099-01-01';
+    const { data: anyEmp } = await sb.from('employees').select('id').limit(1).single();
+    if (anyEmp) {
+      const { error: ew } = await sb.from('shifts').upsert(
+        { employee_id: anyEmp.id, shift_date: testDate, shift_type: 'M' },
+        { onConflict: 'employee_id,shift_date' }
+      );
+      if (!ew) {
+        await sb.from('shifts').delete().eq('shift_date', testDate);
+        results.write_test = 'OK (escritura confirmada)';
+      } else {
+        results.write_test = `ERROR escritura: ${ew.message}`;
+      }
+    } else {
+      results.write_test = 'WARN: no hay empleados';
+    }
   } catch(e){ results.write_test = `EXCEPTION: ${e.message}`; }
   return results;
 }
@@ -294,7 +316,7 @@ async function createShiftRequest(req) {
 
 async function fetchPendingRequests() {
   const { data } = await sb.from('shift_requests')
-    .select('*, requester:employees!shift_requests_requester_id_fkey(full_name), target:employees!shift_requests_target_id_fkey(full_name)')
+    .select('*, requester:requester_id(full_name), target:target_id(full_name)')
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   return data || [];
@@ -1362,7 +1384,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.1 — Backend + XLSX + Aprobaciones</div>
+            <div style={{marginBottom:3}}>v2.2 — Fixes BD</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
