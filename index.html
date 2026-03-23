@@ -355,45 +355,46 @@ async function approveRequest(req) {
     }
 
     if (reqEmpId && tgtEmpId && reqDate && tgtDate) {
-      // Get current shift types
-      const { data: s1 } = await sb.from('shifts').select('shift_type')
+      // Get current shifts for each person on their respective dates
+      const { data: s1 } = await sb.from('shifts').select('shift_type,id')
         .eq('employee_id', reqEmpId).eq('shift_date', reqDate).maybeSingle();
-      const { data: s2 } = await sb.from('shifts').select('shift_type')
+      const { data: s2 } = await sb.from('shifts').select('shift_type,id')
         .eq('employee_id', tgtEmpId).eq('shift_date', tgtDate).maybeSingle();
 
-      const shift1 = s1?.shift_type || 'M';
-      const shift2 = s2?.shift_type || 'M';
+      // SWAP LOGIC:
+      // Requester (on reqDate) swaps with Target (on tgtDate)
+      // → Requester now works tgtDate with target's original shift_type
+      // → Target now works reqDate with requester's original shift_type
+      // → Original entries are removed/replaced
 
-      // Swap: requester gets target's shift on target's date, target gets requester's shift on requester's date
-      const { error: e1 } = await sb.from('shifts').upsert(
-        { employee_id: reqEmpId, shift_date: tgtDate, shift_type: shift2 },
-        { onConflict: 'employee_id,shift_date' }
-      );
-      const { error: e2 } = await sb.from('shifts').upsert(
-        { employee_id: tgtEmpId, shift_date: reqDate, shift_type: shift1 },
-        { onConflict: 'employee_id,shift_date' }
-      );
+      const shift1 = s1?.shift_type; // requester's shift on reqDate (may be null = libre)
+      const shift2 = s2?.shift_type; // target's shift on tgtDate (may be null = libre)
 
-      // Also clear original dates if they are different
-      if (reqDate !== tgtDate) {
-        // Remove requester's shift on their original date (now they work tgtDate)
-        // Actually keep it - the swap is that they exchange one specific day
-        // So: requester's reqDate gets target's shift (shift2 at reqDate for requester? No...)
-        // Correct swap logic:
-        // Requester wants to work tgtDate instead of reqDate → requester gets shift1 on tgtDate, target gets shift2 on reqDate
-        // Re-do with correct logic:
-        await sb.from('shifts').upsert(
-          { employee_id: reqEmpId, shift_date: tgtDate, shift_type: shift1 },
-          { onConflict: 'employee_id,shift_date' }
-        );
-        await sb.from('shifts').upsert(
-          { employee_id: tgtEmpId, shift_date: reqDate, shift_type: shift2 },
-          { onConflict: 'employee_id,shift_date' }
-        );
+      // Remove requester's original shift on reqDate (they won't work that day)
+      if (s1?.id) {
+        await sb.from('shifts').delete().eq('id', s1.id);
+      }
+      // Remove target's original shift on tgtDate (they won't work that day)
+      if (s2?.id) {
+        await sb.from('shifts').delete().eq('id', s2.id);
       }
 
-      if (e1) errors.push(`Swap error (req): ${e1.message}`);
-      if (e2) errors.push(`Swap error (tgt): ${e2.message}`);
+      // Assign: requester works tgtDate with target's shift type
+      if (shift2) {
+        const { error: e1 } = await sb.from('shifts').upsert(
+          { employee_id: reqEmpId, shift_date: tgtDate, shift_type: shift2 },
+          { onConflict: 'employee_id,shift_date' }
+        );
+        if (e1) errors.push(`Swap upsert req→tgtDate: ${e1.message}`);
+      }
+      // Assign: target works reqDate with requester's shift type
+      if (shift1) {
+        const { error: e2 } = await sb.from('shifts').upsert(
+          { employee_id: tgtEmpId, shift_date: reqDate, shift_type: shift1 },
+          { onConflict: 'employee_id,shift_date' }
+        );
+        if (e2) errors.push(`Swap upsert tgt→reqDate: ${e2.message}`);
+      }
 
       // Invalidate calendar cache for affected months
       const months = [reqDate?.substring(0,7), tgtDate?.substring(0,7)].filter(Boolean);
