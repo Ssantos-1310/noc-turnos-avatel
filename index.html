@@ -1001,10 +1001,12 @@ function RequestsView(){
           : `Vacaciones ${r.vacation_start||'?'} – ${r.vacation_end||'?'}`,
         date: new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
         requester_id: r.requester?.id,
+        target_id: r.target?.id,
+        target_name: r.target?.full_name,
         requester_date: r.requester_date,
         target_date: r.target_date,
-        target_name: r.target?.full_name,
-        target_id: r.target?.id
+        vacation_start: r.vacation_start,
+        vacation_end: r.vacation_end
       }));
       setReqs(mapped);
       setReqLoading(false);
@@ -1879,7 +1881,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v3.1 — useRef + handleApprove</div>
+            <div style={{marginBottom:3}}>v3.2 — Fix mapping vacaciones</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
