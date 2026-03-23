@@ -398,8 +398,9 @@ async function approveRequest(req) {
 
       // Invalidate calendar cache for affected months
       const months = [reqDate?.substring(0,7), tgtDate?.substring(0,7)].filter(Boolean);
-      months.forEach(m => { delete shiftsCache[m]; });
+      months.forEach(mk => { delete shiftsCache[mk]; });
       window.__calendarVersion = (window.__calendarVersion||0) + 1;
+      console.log('[approveRequest] Swap aplicado. Meses invalidados:', months, 'calVer:', window.__calendarVersion);
     }
 
   } else if (req.type === 'vacaciones') {
@@ -436,10 +437,15 @@ async function approveRequest(req) {
       if (ebal) errors.push(`Balance error: ${ebal}`);
       else console.log(`Vacaciones aprobadas: ${days.length} días descontados. Quedan: ${newRemaining}`);
 
-      // Invalidate calendar cache
+      // Invalidate calendar cache — clear affected months
       const months = [...new Set(days.map(d => d.substring(0,7)))];
-      months.forEach(m => { delete shiftsCache[m]; });
+      months.forEach(mk => { 
+        delete shiftsCache[mk];
+        // Also try clearing with full key format
+        Object.keys(shiftsCache).filter(k => k.startsWith(mk)).forEach(k => delete shiftsCache[k]);
+      });
       window.__calendarVersion = (window.__calendarVersion||0) + 1;
+      console.log('[approveRequest] Vacaciones aplicadas. Meses invalidados:', months, 'calVer:', window.__calendarVersion);
     }
   }
 
@@ -541,10 +547,15 @@ function TodayView(){
   const [loading,setLoading]=useState(true);
   const [todayVer, setTodayVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
-    const iv = setInterval(()=>{ const v=window.__calendarVersion||0; if(v!==todayVer) setTodayVer(v); },2000);
+    const iv = setInterval(()=>{ const v=window.__calendarVersion||0; if(v!==todayVer) setTodayVer(v); },1000);
     return ()=>clearInterval(iv);
   },[todayVer]);
-  useEffect(()=>{setLoading(true);fetchShiftsForMonth(mi).then(data=>{setMd(data);setLoading(false);});},[mi,todayVer]);
+  useEffect(()=>{
+    setLoading(true);
+    const key = `2026-${String(mi+1).padStart(2,'0')}`;
+    delete shiftsCache[key];
+    fetchShiftsForMonth(mi).then(data=>{setMd(data);setLoading(false)});
+  },[mi,todayVer]);
   const w={M:[],T:[],N:[]};
   EMPS.forEach(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];if(s==='M')w.M.push(e);if(s==='T')w.T.push(e);if(s==='N')w.N.push(e);});
   const fest=isFest(mi,d),we=isWE(mi,d),mr=we?MWE:MWK;
@@ -608,17 +619,23 @@ function CalendarView({isAdmin=true}){
 
   const [dbShifts,setDbShifts]=useState({});
   const [calLoading,setCalLoading]=useState(false);
-  // Listen for external cache invalidations (e.g. after approving a request)
+  // Force fresh fetch when: month changes OR calendar version changes (after approval)
   const [calVer, setCalVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
+    // Poll for version changes (works even when calendar is not focused)
     const interval = setInterval(()=>{
       const v = window.__calendarVersion||0;
-      if(v !== calVer) setCalVer(v);
-    }, 1000);
+      if(v !== calVer) {
+        setCalVer(v);
+      }
+    }, 500);
     return ()=>clearInterval(interval);
   },[calVer]);
   useEffect(()=>{
     setCalLoading(true);
+    // Always delete cache for current month before fetching (ensures fresh data)
+    const key = `2026-${String(mi+1).padStart(2,'0')}`;
+    delete shiftsCache[key];
     fetchShiftsForMonth(mi).then(data=>{setDbShifts(data);setCalLoading(false);});
   },[mi, calVer]);
   const mk=MONTHS[mi],days=MD[mi];
@@ -788,15 +805,20 @@ function TeamView(){
   const [md,setMd]=useState({});
   const [vacBalances,setVacBalances]=useState({});
   useEffect(()=>{fetchShiftsForMonth(mi).then(setMd);},[mi]);
+  const [vacVer, setVacVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
-    // Load vacation balances for all operators
+    const iv = setInterval(()=>{ const v=window.__calendarVersion||0; if(v!==vacVer) setVacVer(v); },1000);
+    return ()=>clearInterval(iv);
+  },[vacVer]);
+  useEffect(()=>{
+    // Load vacation balances for all operators (reload on calVersion change too)
     sb.from('vacation_balance').select('days_remaining, employee:employee_id(short_name)').eq('year',2026).then(({data})=>{
       if(!data)return;
       const map={};
       data.forEach(r=>{ if(r.employee?.short_name) map[r.employee.short_name]=r.days_remaining; });
       setVacBalances(map);
     });
-  },[]);
+  },[vacVer]);
 
   // Turno actual
   function getTurno(emp){
@@ -1796,7 +1818,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.8 — Aprobaciones + Forms + Admin DB</div>
+            <div style={{marginBottom:3}}>v2.9 — Cache fix definitivo</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
