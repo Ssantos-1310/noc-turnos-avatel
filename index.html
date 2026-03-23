@@ -410,12 +410,15 @@ async function approveRequest(req) {
     }
 
     if (reqEmpId && req.vacation_start && req.vacation_end) {
-      const start = new Date(req.vacation_start + 'T00:00:00');
-      const end = new Date(req.vacation_end + 'T00:00:00');
+      // Generate date range safely using string comparison
       const days = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const iso = d.toISOString().split('T')[0];
-        days.push(iso);
+      let cur = req.vacation_start;
+      const endStr = req.vacation_end;
+      while (cur <= endStr) {
+        days.push(cur);
+        const d = new Date(cur + 'T12:00:00'); // noon to avoid DST issues
+        d.setDate(d.getDate() + 1);
+        cur = d.toISOString().split('T')[0];
       }
 
       // Upsert V for each day
@@ -1703,7 +1706,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.7 — Aprobaciones completas + Historial</div>
+            <div style={{marginBottom:3}}>v2.7.1 — Fix rango fechas vacaciones</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
