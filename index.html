@@ -316,7 +316,7 @@ async function createShiftRequest(req) {
 
 async function fetchPendingRequests() {
   const { data } = await sb.from('shift_requests')
-    .select('*, requester:requester_id(full_name), target:target_id(full_name)')
+    .select('id, request_type, status, created_at, requester_date, target_date, vacation_start, vacation_end, requester:requester_id(id, full_name, short_name), target:target_id(id, full_name, short_name)')
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   return data || [];
@@ -734,29 +734,31 @@ function RequestsView(){
   const [modal,setModal]=useState(null);
   const [reqs,setReqs]=useState(REQS);
   const [reqLoading,setReqLoading]=useState(true);
-  useEffect(()=>{
+  // Update global badge count so sidebar can read it
+  useEffect(()=>{ if(!reqLoading) window.__pendingReqs = reqs.length; },[reqs, reqLoading]);
+  const loadReqs = ()=>{
+    setReqLoading(true);
     fetchPendingRequests().then(data=>{
-      // Always update — use DB data if available, else keep hardcoded examples
       const mapped = data.map(r=>({
         id: r.id,
         type: r.request_type==='swap'?'cambio':'vacaciones',
         name: r.requester?.full_name||'–',
         av: (r.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
         desc: r.request_type==='swap'
-          ? `Cambio ${r.requester_date||''} → ${r.target_date||''}`
-          : `Vacaciones ${r.vacation_start||''} – ${r.vacation_end||''}`,
+          ? `Cambio ${r.requester_date||'?'} → ${r.target_date||'?'}`
+          : `Vacaciones ${r.vacation_start||'?'} – ${r.vacation_end||'?'}`,
         date: new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
+        requester_id: r.requester?.id,
         requester_date: r.requester_date,
         target_date: r.target_date,
-        requester_shift: r.requester_shift,
-        target_shift: r.target_shift,
-        target_name: r.target?.full_name
+        target_name: r.target?.full_name,
+        target_id: r.target?.id
       }));
-      // Merge: DB rows first, then hardcoded examples that don't have a real ID
-      setReqs(mapped.length > 0 ? mapped : REQS);
+      setReqs(mapped);
       setReqLoading(false);
     });
-  },[]);
+  };
+  useEffect(()=>{ loadReqs(); },[]);
   return(
     <div>
       <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
@@ -809,8 +811,9 @@ function RequestsView(){
               <button className="btn btn-primary" onClick={async()=>{
                 // Get requester employee id (in real auth we'd use logged-in user)
                 // For now use the first selector value  
-                const empSel = document.querySelector('select.fs');
+                const empSel = document.getElementById('req-emp-select') || document.querySelector('select.fs');
                 const empName = empSel?.value;
+                if(!empName || empName === ''){setModal(null);return;}
                 if(!empName){setModal(null);return;}
                 let {data: emp} = await sb.from('employees').select('id').eq('full_name',empName).maybeSingle();
                 if(!emp){const {data:e2}=await sb.from('employees').select('id').eq('short_name',empName).maybeSingle();emp=e2;}
@@ -916,17 +919,21 @@ function AdminView(){
             </div>
             <div className="req-actions">
               <button className="btn btn-ok btn-sm" onClick={async()=>{
-                await updateRequestStatus(r.id,'approved',null);
-                // If it's a shift swap, apply it to the shifts table
-                if(r.type==='cambio'&&r.requester_date&&r.target_date){
-                  await saveShift(r.name,r.requester_date,r.target_shift||'');
-                  if(r.target_name)await saveShift(r.target_name,r.target_date,r.requester_shift||'');
-                }
+                // Optimistic UI: remove immediately
                 setReqs(prev=>prev.filter(x=>x.id!==r.id));
+                // Persist to DB
+                const err = await updateRequestStatus(r.id,'approved',null);
+                if(err) console.error('approve error', err.message);
+                // If swap: apply the shift change in calendar
+                if(r.type==='cambio'&&r.requester_date&&r.target_date&&r.name){
+                  await saveShift(r.name, r.requester_date, 'T');
+                  if(r.target_name) await saveShift(r.target_name, r.target_date, 'T');
+                }
               }}>✓ Aprobar</button>
               <button className="btn btn-danger btn-sm" onClick={async()=>{
-                await updateRequestStatus(r.id,'rejected',null);
                 setReqs(prev=>prev.filter(x=>x.id!==r.id));
+                const err = await updateRequestStatus(r.id,'rejected',null);
+                if(err) console.error('reject error', err.message);
               }}>✗ Rechazar</button>
             </div>
           </div>
@@ -1468,7 +1475,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.4 — N2 dist + RRHH UX + Equipo UX</div>
+            <div style={{marginBottom:3}}>v2.5 — Solicitudes BD real</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
