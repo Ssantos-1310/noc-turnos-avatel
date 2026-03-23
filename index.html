@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOC Turnos — Avatel</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2435;--bg4:#252d42;
+  --border:#2a3350;--border2:#3a4566;
+  --text:#e8eaf2;--text2:#8892b0;--text3:#4a5578;
+  --blue:#4f8ef7;--blue2:#1e3a6e;--blue3:#0d1f3c;
+  --teal:#00d9b8;--amber:#f7b84f;--amber2:#7a5520;
+  --red:#f75f5f;--red2:#5c1f1f;
+  --green:#4fc97a;--green2:#1a4d2e;
+  --orange:#fb923c;--orange2:#7c3612;--orange3:#3d1a08;
+  --weekend-bg:rgba(79,142,247,0.07);
+  --weekend-border:rgba(79,142,247,0.3);
+  --festivo-bg:rgba(247,184,79,0.13);
+  --festivo-border:rgba(247,184,79,0.55);
+  --radius:10px;--radius-sm:6px;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;min-height:100vh;overflow-x:hidden}
+button{cursor:pointer;border:none;background:none;font-family:var(--font);font-size:14px;color:var(--text)}
+input,select,textarea{font-family:var(--font);font-size:14px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+.sidebar-logo h1{font-size:16px;font-weight:600;letter-spacing:.5px}
+.sidebar-logo span{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.nav{padding:12px 8px;flex:1}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;transition:all .15s;font-size:13px;margin-bottom:2px}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:var(--blue2);color:var(--blue);font-weight:500}
+.nav-icon{width:16px;height:16px;flex-shrink:0}
+.nav-section{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);padding:12px 12px 6px}
+.sidebar-bottom{padding:12px 8px;border-top:1px solid var(--border)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:56px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;background:var(--bg2)}
+.topbar-title{font-size:15px;font-weight:500;flex:1}
+.content{flex:1;overflow-y:auto;padding:24px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.08em}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.stat{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.stat-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.stat-val{font-size:26px;font-weight:600;letter-spacing:-.5px}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:4px}
+/* Badges — D now orange */
+.badge{display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:500;border-radius:4px;min-width:22px;height:22px;padding:0 4px}
+.badge-M{background:#1a3a6e;color:#7eb8f7}
+.badge-T{background:#3d2a1a;color:#f7b84f}
+.badge-N{background:#2a1a4a;color:#c084fc}
+.badge-V{background:#1a3d2a;color:#4fc97a}
+.badge-B{background:#3d1a1a;color:#f75f5f}
+.badge-D{background:var(--orange3);color:var(--orange)}
+.badge-O{background:#2d2a1a;color:#fbbf24}
+.badge-empty{background:transparent;color:var(--text3)}
+/* Calendar */
+.cal-wrapper{overflow-x:auto}
+.cal-table{width:100%;border-collapse:separate;border-spacing:0}
+.cal-table th{position:sticky;top:0;z-index:2;background:var(--bg3);color:var(--text3);font-size:10px;font-weight:500;padding:6px 3px;text-align:center;border-bottom:1px solid var(--border);min-width:32px}
+.cal-table th.name-col{text-align:left;left:0;z-index:3;min-width:150px;padding-left:10px}
+.cal-table td{padding:3px 2px;text-align:center;border-bottom:1px solid rgba(42,51,80,.3)}
+.cal-table td.name-cell{text-align:left;position:sticky;left:0;background:var(--bg2);z-index:1;padding:3px 10px;white-space:nowrap;font-size:13px}
+.cal-table tr:hover td,.cal-table tr:hover td.name-cell{background:var(--bg3)}
+.th-weekend{background:#182240!important;color:#7eb8f7!important;border-bottom:2px solid rgba(79,142,247,.4)!important}
+.td-weekend{background:var(--weekend-bg)!important}
+.th-festivo{background:#2a1c06!important;color:var(--amber)!important;border-bottom:2px solid var(--festivo-border)!important}
+.td-festivo{background:var(--festivo-bg)!important;border-left:1px solid rgba(247,184,79,.2)!important;border-right:1px solid rgba(247,184,79,.2)!important}
+.th-today{background:var(--blue3)!important;color:var(--blue)!important;border-bottom:2px solid var(--blue)!important}
+.td-today{background:rgba(79,142,247,.1)!important;border-left:1px solid rgba(79,142,247,.3)!important}
+/* Multi-select cell highlight */
+.td-selected{outline:2px solid var(--blue)!important;outline-offset:-1px;background:rgba(79,142,247,.18)!important;cursor:pointer}
+.cell-edit{cursor:pointer}
+.cell-edit:hover .badge{outline:2px solid var(--blue)}
+/* Coverage bars */
+.cov-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.cov-label{font-size:12px;color:var(--text2);width:60px;flex-shrink:0}
+.cov-bar{flex:1;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden}
+.cov-fill{height:100%;border-radius:4px}
+.cov-ok{background:var(--teal)}.cov-warn{background:var(--amber)}.cov-bad{background:var(--red)}
+.cov-count{font-size:11px;font-family:var(--mono);color:var(--text2);width:40px;text-align:right}
+/* Requests */
+.req-item{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px}
+.req-av{width:32px;height:32px;border-radius:50%;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text2);flex-shrink:0}
+.req-info{flex:1;min-width:0}
+.req-name{font-size:13px;font-weight:500}
+.req-desc{font-size:11px;color:var(--text2);margin-top:2px}
+.req-actions{display:flex;gap:6px;flex-shrink:0}
+/* Buttons */
+.btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid transparent}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-primary:hover{background:#3d7fe8}
+.btn-ghost{background:var(--bg4);color:var(--text2);border-color:var(--border)}
+.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-ok{background:var(--green2);color:var(--green);border-color:var(--green2)}
+.btn-ok:hover{background:#1f5c36}
+.btn-danger{background:var(--red2);color:var(--red);border-color:var(--red2)}
+.btn-danger:hover{background:#6b2222}
+.btn-warn{background:var(--amber2);color:var(--amber);border-color:var(--amber2)}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-icon{width:28px;height:28px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+/* Tables */
+.emp-table{width:100%;border-collapse:collapse}
+.emp-table th{text-align:left;font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:8px 10px;border-bottom:1px solid var(--border)}
+.emp-table td{padding:10px;border-bottom:1px solid rgba(42,51,80,.4);font-size:13px}
+.emp-table tr:last-child td{border-bottom:none}
+.emp-table tr:hover td{background:var(--bg3)}
+.hbar{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle;margin-right:6px}
+.hfill{height:100%;border-radius:3px}
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.pill-ok{background:var(--green2);color:var(--green)}
+.pill-warn{background:var(--amber2);color:var(--amber)}
+.pill-bad{background:var(--red2);color:var(--red)}
+.pill-blue{background:var(--blue3);color:var(--blue)}
+.pill-purple{background:#2a1a4a;color:#c084fc}
+.pill-neutral{background:var(--bg4);color:var(--text2)}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:4px}
+.modal-sub{font-size:12px;color:var(--text2);margin-bottom:20px}
+.fg{margin-bottom:14px}.fl{font-size:12px;color:var(--text2);margin-bottom:6px;display:block}
+.fi{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);outline:none;transition:border .15s}
+.fi:focus{border-color:var(--blue)}
+.fs{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);outline:none}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+/* Misc */
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;background:var(--bg4);color:var(--text2);border:1px solid var(--border)}
+.notif{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;background:var(--red);color:#fff;border-radius:8px;font-size:10px;font-weight:600;padding:0 4px}
+.today-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.shift-block{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.sbt{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.sb-M .sbt{color:#7eb8f7}.sb-T .sbt{color:#f7b84f}.sb-N .sbt{color:#c084fc}
+.sp{font-size:13px;padding:5px 0;border-bottom:1px solid rgba(42,51,80,.4)}
+.sp:last-child{border-bottom:none}
+.alert{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:var(--radius-sm);margin-bottom:10px;font-size:12px}
+.alert-warn{background:rgba(247,184,79,.1);border:1px solid rgba(247,184,79,.3);color:var(--amber)}
+.alert-info{background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3);color:var(--blue)}
+.alert-ok{background:rgba(79,201,122,.1);border:1px solid rgba(79,201,122,.3);color:var(--green)}
+.month-nav{display:flex;align-items:center;gap:12px}
+.mnb{width:28px;height:28px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:16px}
+.mnb:hover{background:var(--bg4);color:var(--text)}
+.mt{font-size:14px;font-weight:500;min-width:130px;text-align:center}
+/* Coverage rule editor */
+.rule-row{display:grid;grid-template-columns:1fr 100px 80px 80px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(42,51,80,.35)}
+.rule-row:last-child{border-bottom:none}
+.rule-input{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 8px;color:var(--text);font-size:12px;width:100%;outline:none}
+.rule-input:focus{border-color:var(--blue)}
+.rule-num{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 8px;color:var(--text);font-size:12px;width:100%;outline:none;text-align:center;font-family:var(--mono)}
+.rule-num:focus{border-color:var(--blue)}
+/* Multi-select banner */
+.sel-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--blue3);border:1px solid var(--blue2);border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useCallback, useEffect } = React;
+
+// ── SUPABASE CLIENT ───────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://naywdwsjwtbagbzrncke.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5heXdkd3Nqd3RiYWdienJuY2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTM4MTAsImV4cCI6MjA4OTc2OTgxMH0.hoLOn9py6G99Bivp_NQgmL8g7H3XnuAryz6RkQ3UE6g';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── DB HELPERS ────────────────────────────────────────────────────────────────
+// Cache to avoid re-fetching same month
+const shiftsCache = {};
+
+async function fetchShiftsForMonth(monthIdx) {
+  const key = `2026-${String(monthIdx+1).padStart(2,'0')}`;
+  if (shiftsCache[key]) return shiftsCache[key];
+  const start = `${key}-01`;
+  const end = `${key}-31`;
+  const { data, error } = await sb
+    .from('shifts')
+    .select('shift_date, shift_type, employees(short_name)')
+    .gte('shift_date', start)
+    .lte('shift_date', end);
+  if (error) { console.error('fetchShifts error', error); return {}; }
+  // Convert to {shortName: [s1,s2,...,s31]}
+  const result = {};
+  if (data) {
+    data.forEach(row => {
+      const sn = row.employees?.short_name;
+      if (!sn) return;
+      const day = new Date(row.shift_date + 'T00:00:00').getDate() - 1;
+      if (!result[sn]) result[sn] = Array(31).fill('');
+      result[sn][day] = row.shift_type;
+    });
+  }
+  shiftsCache[key] = result;
+  return result;
+}
+
+async function saveShift(employeeShortName, date, shiftType) {
+  // Get employee id
+  const { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).single();
+  if (!emp) return { error: 'Empleado no encontrado' };
+  const { error } = await sb.from('shifts').upsert(
+    { employee_id: emp.id, shift_date: date, shift_type: shiftType },
+    { onConflict: 'employee_id,shift_date' }
+  );
+  // Invalidate cache
+  const mk = date.substring(0,7);
+  delete shiftsCache[mk];
+  return { error };
+}
+
+async function fetchCoverageRules() {
+  const { data } = await sb.from('coverage_rules').select('*').order('sort_order');
+  return data || [];
+}
+
+async function saveCoverageRule(rule) {
+  const { error } = await sb.from('coverage_rules').upsert(rule);
+  return error;
+}
+
+async function deleteRule(id) {
+  const { error } = await sb.from('coverage_rules').delete().eq('id', id);
+  return error;
+}
+
+async function insertRule(rule) {
+  const { error } = await sb.from('coverage_rules').insert(rule);
+  return error;
+}
+
+async function fetchN2Assignments() {
+  const { data } = await sb.from('n2_assignments')
+    .select('week_number, has_festivo, importe_base, importe_festivo, employees(short_name, full_name)')
+    .eq('year', 2026)
+    .order('week_number');
+  return data || [];
+}
+
+async function saveN2Assignment(weekNumber, employeeShortName) {
+  const { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).single();
+  if (!emp) return;
+  await sb.from('n2_assignments').update({ employee_id: emp.id }).eq('week_number', weekNumber).eq('year', 2026);
+}
+
+// ── DEV DIAGNOSTICS ──────────────────────────────────────────────────────────
+async function runDiagnostics() {
+  const results = {};
+  try {
+    const { data: emps, error: e1 } = await sb.from('employees').select('count').single();
+    results.employees = e1 ? `ERROR: ${e1.message}` : `OK (${emps?.count||'?'} rows)`;
+  } catch(e){ results.employees = `EXCEPTION: ${e.message}`; }
+  try {
+    const { data: sh, error: e2 } = await sb.from('shifts').select('count').single();
+    results.shifts = e2 ? `ERROR: ${e2.message}` : `OK (${sh?.count||'?'} rows)`;
+  } catch(e){ results.shifts = `EXCEPTION: ${e.message}`; }
+  try {
+    const { data: n2, error: e3 } = await sb.from('n2_assignments').select('count').single();
+    results.n2 = e3 ? `ERROR: ${e3.message}` : `OK (${n2?.count||'?'} rows)`;
+  } catch(e){ results.n2 = `EXCEPTION: ${e.message}`; }
+  try {
+    const { data: cr, error: e4 } = await sb.from('coverage_rules').select('count').single();
+    results.coverage_rules = e4 ? `ERROR: ${e4.message}` : `OK (${cr?.count||'?'} rows)`;
+  } catch(e){ results.coverage_rules = `EXCEPTION: ${e.message}`; }
+  try {
+    // Test write: upsert a test coverage rule and delete it
+    const { error: ew } = await sb.from('coverage_rules').select('id').limit(1).single();
+    results.write_test = ew ? `WARN: ${ew.message}` : 'OK (read confirmed)';
+  } catch(e){ results.write_test = `EXCEPTION: ${e.message}`; }
+  return results;
+}
+
+async function fetchEmployees() {
+  const { data } = await sb.from('employees').select('*').order('role').order('full_name');
+  return data || [];
+}
+
+async function createShiftRequest(req) {
+  const { error } = await sb.from('shift_requests').insert(req);
+  return error;
+}
+
+async function fetchPendingRequests() {
+  const { data } = await sb.from('shift_requests')
+    .select('*, requester:employees!shift_requests_requester_id_fkey(full_name), target:employees!shift_requests_target_id_fkey(full_name)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  return data || [];
+}
+
+async function updateRequestStatus(id, status, approverId) {
+  const { error } = await sb.from('shift_requests').update({ status, approved_by: approverId, updated_at: new Date().toISOString() }).eq('id', id);
+  return error;
+}
+
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const SD={"enero":{"Zhou Hongxuan":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Hector Verdu":["M","M","M","","","M","M","M","","","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","",""],"Manuel Saelices":["M","M","M","D","D","M","M","M","M","","","","M","V","","","","","","N","N","N","N","N","N","N","","","","",""],"Sergio Vara":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Francisco Castaño":["","","","","","","","","","","","","","","M","M","M","","","M","M","M","M","M","","","M","M","M","M","M"],"Mario Saavedra":["M","M","M","M","M","","","","M","M","M","M","","M","M","","","","","M","M","M","","","","","N","N","N","N","N"],"Juan Carlos":["","","","","","B","B","B","B","B","","","T","T","","M","T","T","","","T","T","T","T","","","M","T","T","T","T"],"Carlos Alberto":["","","","","","T","T","T","T","T","T","T","","","V","V","V","","","M","M","M","M","M","","","M","M","M","",""],"Manuel Loro":["","","","","","V","V","M","M","M","T","T","","","T","T","","","T","T","T","V","D","D","","","T","T","V","",""],"Ruben Culebras":["N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","T","T","T","","","T","","T","V",""],"Jose Luis Carrillo":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Sergio Luque":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Valentina Vargas":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Pedro Ayuso":["","","","","","N","N","N","N","N","N","N","","","","","","","","V","V","V","V","V","M","M","","","","V","V"],"Hector Lamus":["T","T","","T","T","","","T","T","T","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M"],"Leandro Yorlan":["","T","T","","","M","M","M","","","","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T"]},"febrero":{"Zhou Hongxuan":["","","O","O","O","O","O","O","O","","","","","","","","","","","","","","","","","","",""],"Hector Verdu":["","","V","V","V","V","V","T","T","","","V","T","T","","","T","T","T","","","","","T","T","T","","T"],"Manuel Saelices":["M","M","M","M","M","M","M","","","","","V","M","M","","","V","V","V","","","","","V","V","V","",""],"Sergio Vara":["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Francisco Castaño":["","","","","","T","T","","","T","T","T","T","T","T","T","","","M","M","M","","","M","M","M","",""],"Mario Saavedra":["N","N","","","","","","","","M","M","M","M","M","M","M","","","T","T","T","T","T","T","","","",""],"Juan Carlos":["","","M","M","","M","","","","T","T","","","","","","M","M","M","M","M","M","M","","","","M","M"],"Carlos Alberto":["","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","T","T",""],"Manuel Loro":["","","N","N","N","N","N","N","N","","","","","","","","M","M","V","V","V","M","M","","","","M","M"],"Ruben Culebras":["","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","V","V","V","V","V"],"Jose Luis Carrillo":["","","","","","","","","","","","","","","","","M","M","M","M","M","","","M","M","M","M","M"],"Sergio Luque":["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Valentina Vargas":["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Pedro Ayuso":["T","T","V","V","","","","","","V","V","V","","","","","N","N","N","N","N","N","N","","","","",""],"Hector Lamus":["M","M","","","M","M","M","M","M","","","T","T","","","","M","M","M","","","","","M","M","M","",""],"Leandro Yorlan":["T","T","","T","T","T","T","","","N","N","N","","","T","T","T","T","","","","","","N","N","N","N","N"]},"marzo":{"Zhou Hongxuan":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Hector Verdu":["T","","N","N","N","N","N","N","N","","","","","","","","M","M","","M","M","M","M","","","V","","V","","","M"],"Manuel Saelices":["","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","M","M","","","T","","","V"],"Sergio Vara":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Francisco Castaño":["","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","","","T"],"Mario Saavedra":["","","T","T","T","","","","","M","","","T","T","","","T","T","","T","T","","","M","M","M","M","M","M","M",""],"Juan Carlos":["","","V","V","V","V","V","","","V","V","V","","","","","N","N","N","N","N","N","N","","","","","","","","T"],"Carlos Alberto":["","","V","V","V","","","","","T","T","T","","","","","B","B","B","B","","","","","T","T","T","V","","","V"],"Manuel Loro":["","T","","M","M","","","","","V","M","M","","","","","N","N","N","N","N","N","N","","","","M","","","","M"],"Ruben Culebras":["T","T","","","M","M","M","M","M","","","M","","","","","M","M","M","","","","","T","T","","","M","M","M",""],"Jose Luis Carrillo":["M","M","","","","T","T","","","T","T","T","T","T","","","T","T","T","","","","","N","N","N","N","N","N","N",""],"Sergio Luque":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Valentina Vargas":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Pedro Ayuso":["","","M","M","M","M","M","M","M","D","D","M","M","M","","","V","V","V","V","V","","","M","M","M","V","","","","N"],"Hector Lamus":["","","M","M","","M","M","","","M","M","M","M","M","M","M","","","","T","T","T","T","T","","T","T","","","","M"],"Leandro Yorlan":["N","N","","","","","","","","T","M","T","T","T","T","T","","","M","M","M","","","M","M","M","","T","","","T"]},"abril":{"Zhou Hongxuan":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Hector Verdu":["M","M","M","","","","M","M","M","M","","","","N","N","N","N","N","N","N","N","N","","","","","","M","M","M"],"Manuel Saelices":["V","V","","","","","V","V","V","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M"],"Sergio Vara":["","","","","","","","","M","M","M","","","M","M","M","","","","","T","T","T","T","T","","","","","T"],"Francisco Castaño":["T","T","T","T","","","M","T","T","","","","","T","T","T","","","","","N","N","N","N","N","N","N","","",""],"Mario Saavedra":["","","M","M","T","T","","M","M","D","D","","","M","M","M","","","","","","","N","N","N","N","N","","",""],"Juan Carlos":["T","T","T","T","T","T","","","","M","M","M","M","T","T","T","","","","","T","V","V","","","","","N","N","N"],"Carlos Alberto":["V","V","V","V","","","T","T","T","T","T","","","M","M","M","V","","","","V","V","V","","","","","N","N","N"],"Manuel Loro":["M","M","V","M","M","M","","","","M","M","","","","T","T","T","T","","","T","T","V","","","","","T","T","T"],"Ruben Culebras":["","","T","T","","","M","M","M","T","T","T","T","","","T","T","T","T","T","","T","T","T","","","","T","T","T"],"Jose Luis Carrillo":["","","","","","","M","M","M","M","M","M","M","","","","M","M","M","M","M","M","","","","","","M","M",""],"Sergio Luque":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Valentina Vargas":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Pedro Ayuso":["N","N","N","N","N","N","","","","","","","","M","M","M","M","M","","","","","T","T","T","T","T","","",""],"Hector Lamus":["M","M","","","","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","M","M"],"Leandro Yorlan":["T","T","T","T","","","T","T","","","V","","","","","","V","V","","","M","M","M","M","M","M","M","","","M"]},"mayo":{"Zhou Hongxuan":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Hector Verdu":["M","M","M","M","","","","V","V","T","T","V","","","","","","","V","V","V","","","","","N","N","N","N","N",""],"Manuel Saelices":["M","M","M","M","","","","M","M","M","M","M","M","","","","","","M","M","M","","","","","N","N","N","N","N","N"],"Sergio Vara":["T","T","","","T","T","T","T","T","","","","T","T","T","T","T","T","","","T","T","T","","","","T","T","","T",""],"Francisco Castaño":["","","","","M","M","M","M","M","T","T","","","M","M","","","","T","T","","T","T","","","M","M","M","","",""],"Mario Saavedra":["","","","","M","M","M","M","M","M","M","","","T","T","T","","","T","T","T","","","","","T","T","T","","","N"],"Juan Carlos":["N","N","N","N","","","","","","","","T","V","V","V","V","","","","","","M","M","M","M","M","M","M","M","M",""],"Carlos Alberto":["N","N","N","N","","","","","","","","M","M","B","M","M","M","M","","","T","T","T","T","T","","","V","","",""],"Manuel Loro":["","","","","T","T","","V","V","","","M","M","M","M","M","","","M","M","M","M","M","","","M","M","M","","",""],"Ruben Culebras":["","","","","N","N","N","N","N","N","N","","","","","","T","T","V","V","V","V","V","","","","","M","M","M","T"],"Jose Luis Carrillo":["","","","","","M","M","M","","","","T","T","","T","T","","","M","M","M","M","M","M","M","T","","T","T","","T"],"Sergio Luque":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Valentina Vargas":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Pedro Ayuso":["","","T","T","T","T","T","T","T","","","N","N","N","N","N","N","N","","","","T","T","","","","","","M","M","M"],"Hector Lamus":["M","M","","","M","","T","T","","","","V","V","V","","","","","N","N","N","N","N","N","N","","","","","",""],"Leandro Yorlan":["T","T","","","M","M","M","","T","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","",""]},"junio":{"Zhou Hongxuan":["","O","O","O","O","O","","","M","M","M","M","M","M","M","","","","M","M","","","M","M","M","M","","","","T"],"Hector Verdu":["","","","","","","","","M","M","M","M","M","M","M","","","","M","M","M","M","M","M","","","","","","M"],"Manuel Saelices":["N","","","","","","","","T","T","T","T","T","T","T","","","T","T","T","T","T","T","","","","V","","","T"],"Sergio Vara":["","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","","M","M","M","M",""],"Francisco Castaño":["","V","V","","V","","","","T","T","T","","T","","","V","M","M","M","M","","","T","T","T","T","T","T","T",""],"Mario Saavedra":["N","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","M","M","M","","","M"],"Juan Carlos":["","M","M","M","M","M","","","","","M","M","M","","","","","M","T","","","","N","N","N","N","N","N","N",""],"Carlos Alberto":["","T","T","V","","","","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T",""],"Manuel Loro":["","V","M","M","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","","","M"],"Ruben Culebras":["T","","","M","M","","","","M","M","M","","","","","N","N","N","N","N","N","N","","","","","","","","N"],"Jose Luis Carrillo":["T","T","","","","","","","M","M","T","","","","","N","N","N","N","N","N","N","D","D","D","D","D","","","T"],"Sergio Luque":["","","","","","","","","","","","","","","","O","O","O","O","O","","","O","O","O","O","O","","","M"],"Valentina Vargas":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"Pedro Ayuso":["M","","","","V","V","","","V","V","V","V","","","","M","M","M","","","","","N","N","N","N","N","N","N",""],"Hector Lamus":["","T","T","T","T","T","T","T","","","T","T","T","","","","T","T","T","","","","V","V","V","","","","","V"],"Leandro Yorlan":["","M","M","M","M","M","M","M","","","","M","M","T","T","T","T","","","T","","","M","M","M","","","","","N"]},"julio":{"Zhou Hongxuan":["T","T","T","T","","","M","D","D","D","M","","","V","","","T","T","","","M","M","M","M","M","","","M","M","M","M"],"Hector Verdu":["M","M","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","T","T"],"Manuel Saelices":["T","T","","","","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","M","M"],"Sergio Vara":["","M","M","","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","V","V","M","M"],"Francisco Castaño":["","V","","","","","V","V","V","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M"],"Mario Saavedra":["M","M","","M","","","M","M","M","","","","","V","V","V","V","V","","","","","","V","V","","","V","V","V","V"],"Juan Carlos":["","","T","T","T","T","","","T","T","T","","","M","M","M","","","","","N","N","N","N","N","N","N","","","",""],"Carlos Alberto":["","V","V","V","","","M","M","","","","M","M","M","M","M","","","","","M","B","","V","","","","T","T","","T"],"Manuel Loro":["M","V","V","V","","","T","T","V","V","V","","","T","T","T","","","","","N","N","N","N","N","N","N","","","",""],"Ruben Culebras":["N","N","N","N","N","N","","V","V","","V","","","T","T","T","","","","","T","T","T","","","","","M","M","M","T"],"Jose Luis Carrillo":["T","T","T","T","T","T","","","M","M","","T","T","","V","V","","","","","V","V","V","","","","","N","N","N","N"],"Sergio Luque":["M","M","M","M","","","M","M","M","M","M","","","","T","T","T","T","","","T","T","T","T","T","T","T","","","",""],"Valentina Vargas":["","","","","","","O","O","O","O","O","","","","","","M","M","","","M","","M","M","M","","","M","M","",""],"Pedro Ayuso":["","","","","","","T","T","T","T","T","T","T","","","","M","M","T","T","T","T","","","","","","T","T","T",""],"Hector Lamus":["M","","M","M","","","T","","","T","T","","","V","V","V","V","V","M","M","","M","M","M","M","M","M","","","",""],"Leandro Yorlan":["N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","","V","V","","","V","V","V","V"]},"agosto":{"Zhou Hongxuan":["","","","M","M","M","M","","","","V","V","V","","","","","N","N","N","N","N","N","N","","","","","","",""],"Hector Verdu":["T","","","T","T","T","","M","M","M","","","V","V","V","","","","","","M","","","","V","V","","V","V","",""],"Manuel Saelices":["T","","","M","M","M","","M","","","M","M","M","","","","","N","N","N","N","N","N","N","","","","","","",""],"Sergio Vara":["M","M","M","","","","T","T","","","T","T","T","T","","","","T","T","T","T","T","","","T","T","","V","V","",""],"Francisco Castaño":["M","M","M","","","M","M","V","M","M","","","V","","","","","V","V","V","","","","","N","N","N","N","N","N","N"],"Mario Saavedra":["V","","","","","","T","T","T","T","T","T","","","T","","","T","T","T","","","","","N","N","N","N","N","N","N"],"Juan Carlos":["","","","V","V","V","V","","","","","V","","V","M","","","M","M","M","M","M","M","M","M","M","M","","","",""],"Carlos Alberto":["T","","","M","M","M","M","M","","","T","T","T","T","T","T","T","","","T","","","","","T","T","T","","","",""],"Manuel Loro":["","","","T","T","T","P","T","","","T","T","","M","M","","","M","M","M","M","M","","","M","M","M","","","",""],"Ruben Culebras":["","T","T","","","T","T","T","T","T","","","T","T","T","T","T","","","M","M","M","T","T","","","M","","","",""],"Jose Luis Carrillo":["N","N","N","","","","","","","","M","M","M","M","M","M","M","","","T","T","T","","","T","","","","","T","T"],"Sergio Luque":["","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","","M","M","",""],"Valentina Vargas":["M","","","M","","","","M","","","","","T","T","T","","","M","M","","","","","","M","M","T","T","T","T","T"],"Pedro Ayuso":["","","","N","N","N","N","N","N","N","","","","","","","","T","T","V","V","V","","","","","","M","M","",""],"Hector Lamus":["","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","V","V","V","V","V","M","M"],"Leandro Yorlan":["V","","","V","M","M","M","","","","M","M","M","M","M","","","V","V","","","","","","M","M","M","M","M","M","M"]},"septiembre":{"Zhou Hongxuan":["M","M","M","M","M","M","M","","","","V","V","","","T","T","T","T","","","","T","T","T","","","","","N","N"],"Hector Verdu":["T","T","T","T","T","T","T","","","M","M","M","","","M","M","M","","","","","M","M","M","","","","","N","N"],"Manuel Saelices":["M","M","M","M","M","M","M","","","T","T","T","","","T","T","T","","T","","","T","T","T","","T","","","M",""],"Sergio Vara":["V","","","","","","","M","M","M","M","M","","","","","","M","M","M","M","","","M","M","","M","M","M","M"],"Francisco Castaño":["","","","","","","","T","T","T","T","T","T","T","","","T","T","T","T","T","","T","T","T","","","","T","T"],"Mario Saavedra":["","","","","","","","M","M","M","M","M","M","M","","","M","M","M","","","M","M","M","","M","","","M","M"],"Juan Carlos":["N","N","N","N","N","N","N","","","M","","","","","M","M","M","M","M","","","","M","M","M","M","","","",""],"Carlos Alberto":["N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","M","M","M","","","V","M"],"Manuel Loro":["","T","","T","T","","","T","T","","T","T","","","M","M","M","M","M","M","M","","","","T","T","","","T","T"],"Ruben Culebras":["M","M","M","","","","","T","T","T","T","T","T","T","","","","","","","","T","T","T","T","T","T","T","",""],"Jose Luis Carrillo":["T","T","T","T","","","","M","M","","M","M","M","M","","","","T","T","","","M","V","V","V","V","","","",""],"Sergio Luque":["M","M","","V","","","","V","V","","","","","","N","N","N","N","N","N","N","","","","","","","","M","M"],"Valentina Vargas":["","","M","M","M","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","T","T"],"Pedro Ayuso":["V","V","V","V","V","","","M","M","M","M","M","","","M","M","","","","","","T","","","T","T","T","T","M","M"],"Hector Lamus":["","","","T","T","T","T","","","T","T","","","","T","T","T","","","","","N","N","N","N","N","N","N","",""],"Leandro Yorlan":["","","M","M","M","","","M","M","","","","","","M","M","M","","","","","N","N","N","N","N","N","N","",""]},"octubre":{"Zhou Hongxuan":["N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","","M","M","","","M","M","M","M",""],"Hector Verdu":["N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","T","T","T","T","T","","","T","","M"],"Manuel Saelices":["","","M","","","M","M","","M","M","","","M","M","M","M","M","M","M","","","T","T","T","","","M","M","M","",""],"Sergio Vara":["M","","","","","N","N","N","N","N","N","N","","","","","","","","V","V","V","V","M","M","M","","","","T","T"],"Francisco Castaño":["T","T","T","","","T","T","","","T","","","","","","T","T","","","T","T","T","T","T","T","T","","","M","M","M"],"Mario Saavedra":["M","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","T","T","T"],"Juan Carlos":["T","T","","","","T","T","T","T","","","","M","M","","","","","","T","T","","T","T","","","M","M","M","M","M"],"Carlos Alberto":["M","M","","","","M","M","M","","","","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T"],"Manuel Loro":["T","T","T","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M"],"Ruben Culebras":["T","T","T","T","T","","","T","","","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","",""],"Jose Luis Carrillo":["M","M","M","","","M","M","","","M","","","M","M","M","","","","","N","N","N","N","N","N","N","","","","",""],"Sergio Luque":["","M","M","","","T","T","T","T","T","","","T","T","T","T","","T","T","","","M","M","","","","","","","V",""],"Valentina Vargas":["T","T","T","T","T","","","M","M","M","","","M","M","M","M","","","","M","M","M","","","","","N","N","N","N","N"],"Pedro Ayuso":["M","M","M","M","M","","","","T","T","T","T","T","T","","","T","","","T","T","T","","","","","N","N","N","N","N"],"Hector Lamus":["","","","","","M","M","M","M","M","M","M","","","","M","M","","","M","M","M","M","M","","","M","M","M","",""],"Leandro Yorlan":["","","","","","T","T","T","T","T","T","T","","","T","T","T","","","T","T","T","","","","","T","T","T","",""]},"noviembre":{"Zhou Hongxuan":["","","M","M","M","","","","","M","M","","M","M","","","T","T","T","","","","","T","T","T","T","T","T","T"],"Hector Verdu":["","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","",""],"Manuel Saelices":["","","M","M","M","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M"],"Sergio Vara":["T","T","","","","T","T","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","",""],"Francisco Castaño":["M","M","M","","","","","","","M","M","M","","","","","N","N","N","N","N","N","N","","","","","","",""],"Mario Saavedra":["","","T","T","T","","","T","T","T","T","T","T","T","","","T","","","","","","","T","T","","T","T","",""],"Juan Carlos":["M","M","","","","M","M","","","","M","M","M","M","","","M","M","M","","","","","N","N","N","N","N","N","N"],"Carlos Alberto":["T","T","","","T","T","T","T","T","","","T","","","","","T","T","T","T","T","","","","","","","M","",""],"Manuel Loro":["","","","","M","M","M","","","M","M","M","M","M","","","M","M","M","","","","","N","N","N","N","N","N","N"],"Ruben Culebras":["","","T","T","T","T","T","","","","","M","M","M","M","M","","","M","","","","","M","M","M","M","M","",""],"Jose Luis Carrillo":["","","M","M","M","M","M","M","M","","","T","T","T","","","T","T","T","","","","","T","T","T","","","",""],"Sergio Luque":["","","T","T","T","T","T","","","M","M","M","","","M","M","","","","M","V","","","M","M","M","M","","M","M"],"Valentina Vargas":["N","N","","","","","","","","T","T","T","T","T","T","T","","","T","T","T","T","T","","","T","T","T","",""],"Pedro Ayuso":["N","N","","","","","","","","M","M","M","M","M","","","M","M","","M","M","","","M","M","M","M","M","",""],"Hector Lamus":["","","M","M","M","M","M","","","T","T","","","","","","M","M","M","M","M","M","M","","","","T","T","T","T"],"Leandro Yorlan":["","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","","T","T","T","",""]},"diciembre":{"Zhou Hongxuan":["","","","T","T","T","T","","","T","T","","","","T","T","T","","","","","N","N","N","N","N","N","N","","",""],"Hector Verdu":["M","M","M","M","M","M","M","","","M","","T","","","M","M","M","M","","","","M","M","","M","M","","","T","T",""],"Manuel Saelices":["","","M","M","M","","","M","M","","","","T","T","T","T","","","","","","N","N","N","N","N","N","N","","",""],"Sergio Vara":["T","T","T","T","T","","","","","","M","M","M","M","","M","M","M","M","","","M","M","M","","","","","M","M","M"],"Francisco Castaño":["M","M","M","M","M","M","M","","","T","T","T","","","T","T","T","","","","","T","T","T","","","","","N","N","N"],"Mario Saavedra":["M","M","M","M","M","","","M","M","M","M","M","","","M","M","M","","M","","","M","M","M","","","","","N","N","N"],"Juan Carlos":["","","","","","","","T","T","T","T","T","T","T","","","","T","T","T","T","","","T","T","","","","T","T","T"],"Carlos Alberto":["T","T","","T","T","","","M","M","M","M","M","M","M","","","M","M","M","M","M","","","M","","","","","T","T","T"],"Manuel Loro":["","","","","","","","M","M","M","M","M","","","T","T","T","T","T","","","T","T","T","","T","","","T","T","T"],"Ruben Culebras":["M","M","","","","","","T","T","","T","T","","","M","M","M","M","M","","","M","M","","T","T","T","T","","","T"],"Jose Luis Carrillo":["N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","M","M","","","M","M","M","","","M","M","M"],"Sergio Luque":["","","V","","","","","N","N","N","N","N","N","N","","","","","","","","T","T","T","T","T","T","T","","",""],"Valentina Vargas":["T","T","T","","","","","M","M","M","M","M","","","","","T","T","T","","","M","M","M","M","M","M","M","","",""],"Pedro Ayuso":["M","M","M","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M","M","M","","","M","M",""],"Hector Lamus":["","","T","T","T","","","T","T","T","","","","","N","N","N","N","N","N","N","","","","","","","","M","M","M"],"Leandro Yorlan":["T","T","T","","","","","M","M","M","","","","","M","M","","M","","","","T","T","","T","T","","","T","T","T"]}};
+
+const REC={"Zhou Hongxuan":{"M":39,"T":34,"N":28,"V":0,"B":2,"D":0,"h":824},"Hector Verdu":{"M":57,"T":22,"N":21,"V":4,"B":0,"D":0,"h":832},"Manuel Saelices":{"M":15,"T":26,"N":7,"V":0,"B":55,"D":0,"h":824},"Sergio Vara":{"M":29,"T":45,"N":21,"V":5,"B":0,"D":0,"h":824},"Francisco Castaño":{"M":43,"T":35,"N":18,"V":0,"B":0,"D":3,"h":800},"Mario Saavedra":{"M":32,"T":35,"N":32,"V":0,"B":0,"D":1,"h":816},"Juan Carlos":{"M":34,"T":35,"N":21,"V":4,"B":0,"D":0,"h":816},"Carlos Alberto":{"M":31,"T":39,"N":28,"V":0,"B":0,"D":4,"h":824},"Ruben Culebras":{"M":23,"T":46,"N":31,"V":3,"B":0,"D":1,"h":824},"Sergio Luque":{"M":37,"T":33,"N":21,"V":11,"B":0,"D":1,"h":816},"Valentina Vargas":{"M":38,"T":46,"N":21,"V":0,"B":0,"D":0,"h":840},"Pedro Ayuso":{"M":43,"T":34,"N":19,"V":0,"B":0,"D":0,"h":840},"Hector Lamus":{"M":36,"T":34,"N":21,"V":0,"B":7,"D":1,"h":800},"Leandro Yorlan":{"M":43,"T":39,"N":21,"V":0,"B":0,"D":3,"h":824}};
+
+const FEST=["2026-01-01","2026-01-06","2026-03-19","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-06-24","2026-07-25","2026-08-15","2026-10-12","2026-11-01","2026-11-09","2026-12-08","2026-12-25"];
+const EMPS=["Hector Jose Lamus Moreno","Hector Verdu Relaño","Francisco Castaño Montouto","Mario Saavedra Mateo","Ruben Culebras Blanco","Manuel Saelices Escolar","Marianela Beatriz Vasquez Guardia","Pedro Pablo Ayuso Muñoz","Juan Carlos Farfan Mallaupoma","Leandro Yorlan Roman Jaimes","Sergio Vara","Zhou Hongxuan","Valentina Vargas Moreno","Sergio Luque Lavado","Carlos Alberto Hilleshein","Manuel Loro Sanchez de Pablo","Jose Luis Carrillo Sierra"];
+// Short name → full name mapping for shift data lookup
+const EMP_SHORT={"Hector Jose Lamus Moreno":"Hector Lamus","Hector Verdu Relaño":"Hector Verdu","Francisco Castaño Montouto":"Francisco Castaño","Mario Saavedra Mateo":"Mario Saavedra","Ruben Culebras Blanco":"Ruben Culebras","Manuel Saelices Escolar":"Manuel Saelices","Marianela Beatriz Vasquez Guardia":"Marianela Beatriz","Pedro Pablo Ayuso Muñoz":"Pedro Ayuso","Juan Carlos Farfan Mallaupoma":"Juan Carlos","Leandro Yorlan Roman Jaimes":"Leandro Yorlan","Sergio Vara":"Sergio Vara","Zhou Hongxuan":"Zhou Hongxuan","Valentina Vargas Moreno":"Valentina Vargas","Sergio Luque Lavado":"Sergio Luque","Carlos Alberto Hilleshein":"Carlos Alberto","Manuel Loro Sanchez de Pablo":"Manuel Loro","Jose Luis Carrillo Sierra":"Jose Luis Carrillo"};
+const MONTHS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const MN=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const MD=[31,28,31,30,31,30,31,31,30,31,30,31];
+const DN=["D","L","M","X","J","V","S"];
+const SL={M:'Mañana',T:'Tarde',N:'Noche',V:'Vacaciones',B:'Baja',D:'Horas extras',O:'Oficina'};
+const HMAX=1624,JMAX=203,VMAX=23;
+const MWK={M:4,T:4,N:2},MWE={M:2,T:2,N:2};
+const REQS=[
+  {id:1,type:'cambio',name:'Pedro Ayuso',av:'PA',desc:'Cambio Noche 28 Mar → Tarde 2 Abr con Sergio Vara',date:'Hoy 10:32'},
+  {id:2,type:'vacaciones',name:'Hector Verdu',av:'HV',desc:'Vacaciones 14–18 Abril (5 días)',date:'Ayer 16:45'},
+  {id:3,type:'cambio',name:'Carlos Alberto',av:'CA',desc:'Cambio Mañana 5 May → Tarde 5 May con Juan Carlos',date:'20 Mar'},
+];
+
+// Initial coverage rules — editable by admin
+const INIT_RULES=[
+  {id:1,label:'Turno mañana (L–V)',weekday:4,weekend:2,unit:'operadores'},
+  {id:2,label:'Turno tarde (L–V)',weekday:4,weekend:2,unit:'operadores'},
+  {id:3,label:'Turno noche (todos los días)',weekday:2,weekend:2,unit:'operadores'},
+  {id:4,label:'Horas anuales máx.',weekday:1624,weekend:null,unit:'horas'},
+  {id:5,label:'Jornadas anuales',weekday:203,weekend:null,unit:'jornadas'},
+  {id:6,label:'Vacaciones anuales',weekday:23,weekend:null,unit:'días'},
+  {id:7,label:'Horas extras máx. (D)',weekday:80,weekend:null,unit:'horas/año'},
+];
+
+const isFest=(mi,d)=>FEST.includes(`2026-${String(mi+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+const isWE=(mi,d)=>[0,6].includes(new Date(2026,mi,d).getDay());
+const isTod=(mi,d)=>new Date(2026,mi,d).toDateString()===new Date().toDateString();
+
+function Bdg({s}){
+  if(!s)return<span className="badge badge-empty">–</span>;
+  return<span className={`badge badge-${s}`}>{s}</span>;
+}
+function NI({n}){
+  const ic={
+    today:<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2" strokeLinecap="round"/></svg>,
+    calendar:<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="3" width="14" height="12" rx="2"/><path d="M1 7h14M5 1v4M11 1v4" strokeLinecap="round"/></svg>,
+    team:<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-5 5-5h0c2.8 0 5 2.2 5 5" strokeLinecap="round"/></svg>,
+    requests:<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="1" width="12" height="14" rx="2"/><path d="M5 5h6M5 8h6M5 11h4" strokeLinecap="round"/></svg>,
+    admin:<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1L2 4v4c0 3.3 2.5 6 6 7 3.5-1 6-3.7 6-7V4L8 1z" strokeLinejoin="round"/></svg>,
+  };
+  return<span className="nav-icon">{ic[n]||null}</span>;
+}
+
+// ── TODAY ──────────────────────────────────────────────────────────────────────
+function TodayView(){
+  const t=new Date(),mi=t.getMonth(),d=t.getDate();
+  const [md,setMd]=useState({});
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{fetchShiftsForMonth(mi).then(data=>{setMd(data);setLoading(false);});},[mi]);
+  const w={M:[],T:[],N:[]};
+  EMPS.forEach(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];if(s==='M')w.M.push(e);if(s==='T')w.T.push(e);if(s==='N')w.N.push(e);});
+  const fest=isFest(mi,d),we=isWE(mi,d),mr=we?MWE:MWK;
+  const ok=w.M.length>=mr.M&&w.T.length>=mr.T&&w.N.length>=mr.N;
+  const absent=EMPS.filter(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return s==='B'||s==='V';});
+  if(loading) return <div style={{padding:40,color:'var(--text3)',textAlign:'center'}}>⏳ Cargando datos...</div>;
+  return(
+    <div>
+      <div style={{marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:600}}>{t.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>
+            {fest?<span style={{color:'var(--amber)'}}>⚡ Festivo Madrid — Bonificación activa</span>
+            :we?<span style={{color:'var(--blue)'}}>Fin de semana — Cobertura mínima: 2M/2T/2N</span>
+            :'Día laborable — Cobertura mínima: 4M/4T/2N'}
+          </div>
+        </div>
+        <span className={`pill ${ok?'pill-ok':'pill-bad'}`} style={{marginLeft:'auto'}}>{ok?'✓ Cobertura correcta':'⚠ Cobertura insuficiente'}</span>
+      </div>
+      <div className="today-grid">
+        {[{k:'M',l:'Mañana',ti:'07:00–15:00',ws:w.M,mn:mr.M,c:'sb-M'},{k:'T',l:'Tarde',ti:'15:00–23:00',ws:w.T,mn:mr.T,c:'sb-T'},{k:'N',l:'Noche',ti:'23:00–07:00',ws:w.N,mn:mr.N,c:'sb-N'}].map(({k,l,ti,ws,mn,c})=>(
+          <div key={k} className={`shift-block ${c}`}>
+            <div className="sbt"><Bdg s={k}/>{l}<span style={{marginLeft:'auto',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>{ti}</span></div>
+            {ws.length===0?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Sin operadores</div>:ws.map(w=><div key={w} className="sp">{w}</div>)}
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)',display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--text3)'}}>
+              <span>{ws.length} operadores</span><span style={{color:ws.length>=mn?'var(--green)':'var(--red)'}}>Mín: {mn}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid-2">
+        <div className="card">
+          <div className="card-header"><span className="card-title">Cobertura del turno</span></div>
+          {[['M',w.M.length,mr.M],['T',w.T.length,mr.T],['N',w.N.length,mr.N]].map(([l,v,m])=>{
+            const c=v>=m?'cov-ok':v>=m-1?'cov-warn':'cov-bad';
+            return(<div key={l} className="cov-row"><span className="cov-label"><Bdg s={l}/></span><div className="cov-bar"><div className={`cov-fill ${c}`} style={{width:`${Math.min(v/8*100,100)}%`}}/></div><span className="cov-count">{v}/{m}+</span></div>);
+          })}
+        </div>
+        <div className="card">
+          <div className="card-header"><span className="card-title">Ausencias hoy</span></div>
+          {absent.length===0?<div style={{fontSize:12,color:'var(--text3)'}}>Sin ausencias registradas</div>
+          :absent.map(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return(
+            <div key={e} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(42,51,80,.3)'}}>
+              <span>{e}</span><span className={`pill ${s==='B'?'pill-bad':'pill-warn'}`} style={{marginLeft:'auto'}}>{SL[s]||''}</span>
+            </div>);})}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── CALENDAR ───────────────────────────────────────────────────────────────────
+function CalendarView({isAdmin=true}){
+  const today=new Date();
+  const [mi,setMi]=useState(today.getMonth());
+  const [shifts,setShifts]=useState(SD);
+  // Multi-select state: {emp, days: Set of day indices}
+  const [sel,setSel]=useState(null); // {emp, days: Set}
+  const [batchModal,setBatchModal]=useState(false);
+  const [batchShift,setBatchShift]=useState('M');
+
+  const [dbShifts,setDbShifts]=useState({});
+  const [calLoading,setCalLoading]=useState(false);
+  useEffect(()=>{
+    setCalLoading(true);
+    fetchShiftsForMonth(mi).then(data=>{setDbShifts(data);setCalLoading(false);});
+  },[mi]);
+  const mk=MONTHS[mi],days=MD[mi];
+  // Merge: dbShifts override static SD for loaded months
+  const md = {...(SD[mk]||{}),...dbShifts};
+  const di=useMemo(()=>Array.from({length:days},(_,i)=>({we:isWE(mi,i+1),fe:isFest(mi,i+1),to:isTod(mi,i+1),dow:new Date(2026,mi,i+1).getDay()})),[mi,days]);
+  const cov=useMemo(()=>Array.from({length:days},(_,i)=>{let m=0,t=0,n=0;EMPS.forEach(e=>{const s=(md[e]||[])[i];if(s==='M')m++;if(s==='T')t++;if(s==='N')n++;});return{m,t,n};}),[mi,md,days]);
+
+  const thcls=info=>{if(info.fe)return 'th-festivo';if(info.to)return 'th-today';if(info.we)return 'th-weekend';return '';};
+  const tdcls=info=>{if(info.fe)return 'td-festivo';if(info.to)return 'td-today';if(info.we)return 'td-weekend';return '';};
+
+  const handleCellClick=(emp,dayIdx)=>{
+    if(!isAdmin)return;
+    setSel(prev=>{
+      if(!prev||prev.emp!==emp){
+        // Start new selection for this employee
+        return{emp,days:new Set([dayIdx])};
+      }
+      // Toggle day in existing selection for same employee
+      const nd=new Set(prev.days);
+      if(nd.has(dayIdx))nd.delete(dayIdx);else nd.add(dayIdx);
+      return nd.size===0?null:{emp,days:nd};
+    });
+  };
+
+  const applyBatch=async()=>{
+    if(!sel)return;
+    // Save each changed day to DB
+    const empKey=EMP_SHORT[sel.emp]||sel.emp;
+    const savePromises=[...sel.days].map(dayIdx=>{
+      const date=`2026-${String(mi+1).padStart(2,'0')}-${String(dayIdx+1).padStart(2,'0')}`;
+      return saveShift(empKey, date, batchShift);
+    });
+    await Promise.all(savePromises);
+    // Refresh month data
+    const updated=await fetchShiftsForMonth(mi);
+    setDbShifts(updated);
+    setSel(null);setBatchModal(false);
+  };
+
+  const clearSel=()=>setSel(null);
+
+  return(
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:16,flexWrap:'wrap'}}>
+        <div className="month-nav">
+          <button className="mnb" onClick={()=>{setMi(i=>(i+11)%12);setSel(null);}}>‹</button>
+          <span className="mt">{MN[mi]} 2026</span>
+          <button className="mnb" onClick={()=>{setMi(i=>(i+1)%12);setSel(null);}}>›</button>
+        </div>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap',marginLeft:'auto',alignItems:'center'}}>
+          {Object.entries(SL).map(([k,v])=><span key={k} style={{display:'flex',alignItems:'center',gap:4,fontSize:11,color:'var(--text2)'}}><Bdg s={k}/> {v}</span>)}
+          <span style={{fontSize:11,padding:'2px 8px',background:'var(--festivo-bg)',border:'1px solid var(--festivo-border)',borderRadius:4,color:'var(--amber)'}}>⚡ Festivo</span>
+          <span style={{fontSize:11,padding:'2px 8px',background:'var(--weekend-bg)',border:'1px solid var(--weekend-border)',borderRadius:4,color:'#7eb8f7'}}>◻ Finde</span>
+        </div>
+      </div>
+
+      {calLoading&&<div className="alert alert-info" style={{marginBottom:12}}><span>⏳</span><span>Cargando turnos desde la base de datos...</span></div>}
+      {isAdmin&&!sel&&!calLoading&&(
+        <div className="alert alert-info" style={{marginBottom:12}}>
+          <span>✏️</span>
+          <span>Modo admin — haz clic en celdas de un mismo operador para seleccionarlas. Selecciona varios días y aplica el turno de una vez.</span>
+        </div>
+      )}
+
+      {isAdmin&&sel&&(
+        <div className="sel-banner">
+          <span style={{color:'var(--blue)'}}>✓</span>
+          <span><strong>{sel.emp}</strong> — {sel.days.size} día{sel.days.size!==1?'s':''} seleccionado{sel.days.size!==1?'s':''}</span>
+          <div style={{display:'flex',gap:8,marginLeft:'auto'}}>
+            <button className="btn btn-ghost btn-sm" onClick={clearSel}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>setBatchModal(true)}>Asignar turno →</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div className="cal-wrapper">
+          <table className="cal-table">
+            <thead>
+              <tr>
+                <th className="name-col">Operador</th>
+                {di.map((info,i)=>(
+                  <th key={i} className={thcls(info)}>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+                      {info.fe&&<span style={{fontSize:8}}>⚡</span>}
+                      <span style={{fontSize:10}}>{i+1}</span>
+                      <span style={{fontSize:9,opacity:.7}}>{DN[info.dow]}</span>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+              <tr style={{background:'var(--bg4)'}}>
+                <td className="name-cell" style={{fontSize:10,color:'var(--text3)',padding:'2px 10px'}}>Cobertura</td>
+                {cov.map(({m,t,n},i)=>{
+                  const info=di[i],mr=info.we?MWE:MWK,all=m>=mr.M&&t>=mr.T&&n>=mr.N;
+                  return(<td key={i} className={tdcls(info)} style={{padding:'2px 1px'}}>
+                    <div style={{width:22,height:22,borderRadius:3,background:all?'rgba(79,201,122,.2)':'rgba(247,95,95,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>
+                      <span style={{fontSize:9,color:all?'var(--green)':'var(--red)',fontWeight:700}}>{all?'✓':'!'}</span>
+                    </div>
+                  </td>);
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {EMPS.map(emp=>(
+                <tr key={emp}>
+                  <td className="name-cell">{emp}</td>
+                  {di.map((info,i)=>{
+                    const empKey=EMP_SHORT[emp]||emp;
+                    const s=(md[empKey]||[])[i]||'';
+                    const isSel=sel&&sel.emp===emp&&sel.days.has(i);
+                    const isSelEmp=sel&&sel.emp===emp;
+                    return(
+                      <td key={i}
+                        className={`${isSel?'td-selected':tdcls(info)} ${isAdmin?'cell-edit':''}`}
+                        onClick={isAdmin?()=>handleCellClick(emp,i):undefined}
+                        style={{opacity:sel&&!isSelEmp?.5:1,transition:'opacity .1s'}}>
+                        <Bdg s={s}/>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {batchModal&&sel&&(
+        <div className="modal-overlay" onClick={()=>setBatchModal(false)}>
+          <div className="modal" style={{maxWidth:380}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Asignar turno en bloque</div>
+            <div className="modal-sub">
+              {sel.emp} — {sel.days.size} días seleccionados en {MN[mi]}
+              <div style={{marginTop:6,fontSize:11,color:'var(--text3)'}}>
+                Días: {[...sel.days].sort((a,b)=>a-b).map(d=>d+1).join(', ')}
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:20}}>
+              {['M','T','N','V','B','D','O',''].map(s=>(
+                <button key={s||'x'} onClick={()=>setBatchShift(s)}
+                  style={{padding:'10px 4px',borderRadius:6,border:'2px solid',cursor:'pointer',
+                    borderColor:batchShift===s?'var(--blue)':'var(--border)',
+                    background:batchShift===s?'var(--blue3)':'var(--bg3)',
+                    display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                  <Bdg s={s}/><span style={{fontSize:10,color:'var(--text2)'}}>{s?SL[s]:'Libre'}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={()=>setBatchModal(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={applyBatch}>
+                Aplicar a {sel.days.size} día{sel.days.size!==1?'s':''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TEAM ───────────────────────────────────────────────────────────────────────
+function TeamView(){
+  const today=new Date(),mi=today.getMonth(),d=today.getDate();
+  const [md,setMd]=useState({});
+  useEffect(()=>{fetchShiftsForMonth(mi).then(setMd);},[mi]);
+
+  // Turno actual
+  function getTurno(emp){
+    const empKey=EMP_SHORT[emp]||emp;
+    const s=(md[empKey]||[])[d-1]||'';
+    if(s==='M') return{label:'Mañana',cls:'pill-blue'};
+    if(s==='T') return{label:'Tarde',cls:'pill-purple'};
+    if(s==='N') return{label:'Noche',cls:'pill-purple'};
+    if(s==='D') return{label:'H. extras',cls:'pill-warn'};
+    if(s==='O') return{label:'Onboarding',cls:'pill-neutral'};
+    return{label:'Libre',cls:'pill-ok'};
+  }
+  // Situación laboral (prioridad sobre turno)
+  function getSituacion(emp){
+    const empKey=EMP_SHORT[emp]||emp;
+    const s=(md[empKey]||[])[d-1]||'';
+    if(s==='B') return{label:'Baja',cls:'pill-bad'};
+    if(s==='V') return{label:'Vacaciones',cls:'pill-warn'};
+    return null; // normal = no special situation
+  }
+
+  const ed=useMemo(()=>EMPS.map(emp=>{
+    const r=REC[emp]||{};const h=r.h||0;const j=(r.M||0)+(r.T||0)+(r.N||0);const eh=(r.D||0)*8;
+    const hst=h>HMAX?'bad':h>HMAX*.92?'warn':'ok';
+    return{emp,r,h,j,eh,hst};
+  }),[]);
+
+  // Build lists for the widget
+  const bajas=EMPS.filter(e=>(md[EMP_SHORT[e]||e]||[])[d-1]==='B');
+  const vacas=EMPS.filter(e=>(md[EMP_SHORT[e]||e]||[])[d-1]==='V');
+
+  return(
+    <div>
+      <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr 1fr',gap:12,marginBottom:20}}>
+        {/* Operadores widget — now expanded with vacas+bajas */}
+        <div className="stat" style={{gridRow:'span 1'}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:4}}>
+            <div className="stat-label">Equipo</div>
+          </div>
+          <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:10}}>
+            <span className="stat-val" style={{color:'var(--teal)'}}>{EMPS.length}</span>
+            <span style={{fontSize:12,color:'var(--text3)'}}>operadores</span>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:2}}>Hoy ausentes</div>
+            {bajas.length===0&&vacas.length===0&&(
+              <span style={{fontSize:12,color:'var(--green)'}}>✓ Sin ausencias</span>
+            )}
+            {bajas.map(e=>(
+              <div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
+                <span className="pill pill-bad" style={{fontSize:10,padding:'1px 6px'}}>Baja</span>
+                <span style={{color:'var(--text2)'}}>{e}</span>
+              </div>
+            ))}
+            {vacas.map(e=>(
+              <div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
+                <span className="pill pill-warn" style={{fontSize:10,padding:'1px 6px'}}>Vacaciones</span>
+                <span style={{color:'var(--text2)'}}>{e}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="stat"><div className="stat-label">Horas pactadas</div><div className="stat-val" style={{color:'var(--blue)'}}>1.624h</div><div className="stat-sub">203 jornadas · 23 días vacac.</div></div>
+        <div className="stat"><div className="stat-label">Alertas horas</div><div className="stat-val" style={{color:'var(--amber)'}}>{ed.filter(e=>e.hst!=='ok').length}</div><div className="stat-sub">sobre el 92% de las pactadas</div></div>
+      </div>
+      <div className="card" style={{padding:0}}>
+        <div style={{padding:'16px 16px 0',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+          <span className="card-title">Resumen anual</span>
+          <span style={{fontSize:11,color:'var(--text3)'}}>Turno/Situación = hoy, {today.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</span>
+        </div>
+        <div style={{overflowX:'auto'}}>
+          <table className="emp-table">
+            <thead><tr><th>Operador</th><th>Horas ({HMAX}h)</th><th>Jornadas ({JMAX})</th><th>M / T / N</th><th>Vacac. ({VMAX})</th><th>Bajas</th><th>H.extras</th><th>Turno hoy</th><th>Situación</th></tr></thead>
+            <tbody>
+              {ed.map(({emp,r,h,j,eh,hst})=>{
+                const bc=hst==='ok'?'#4fc97a':hst==='warn'?'#f7b84f':'#f75f5f';
+                const ec=eh>80?'var(--red)':eh>60?'var(--amber)':'var(--text2)';
+                const turno=getTurno(emp);
+                const situ=getSituacion(emp);
+                return(<tr key={emp}>
+                  <td style={{fontWeight:500}}>{emp}</td>
+                  <td><div style={{display:'flex',alignItems:'center',gap:6}}><div className="hbar"><div className="hfill" style={{width:`${Math.min(h/HMAX*100,100)}%`,background:bc}}/></div><span style={{fontFamily:'var(--mono)',fontSize:12}}>{h}h</span></div></td>
+                  <td><span style={{fontFamily:'var(--mono)',fontSize:12}}>{j}</span></td>
+                  <td>
+                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#7eb8f7'}}>{r.M||0}</span>
+                    <span style={{color:'var(--text3)',margin:'0 3px'}}>/</span>
+                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#f7b84f'}}>{r.T||0}</span>
+                    <span style={{color:'var(--text3)',margin:'0 3px'}}>/</span>
+                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#c084fc'}}>{r.N||0}</span>
+                  </td>
+                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:(r.V||0)>VMAX?'var(--red)':'var(--green)'}}>{r.V||0}</span></td>
+                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:r.B>0?'var(--red)':'var(--text2)'}}>{r.B||0}</span></td>
+                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:ec}}>{r.D||0} ({eh}h)</span></td>
+                  <td>{situ?<span style={{opacity:.4,fontSize:11,color:'var(--text3)'}}>–</span>:<span className={`pill ${turno.cls}`}>{turno.label}</span>}</td>
+                  <td>{situ?<span className={`pill ${situ.cls}`}>{situ.label}</span>:<span style={{fontSize:11,color:'var(--text3)'}}>–</span>}</td>
+                </tr>);
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── REQUESTS ───────────────────────────────────────────────────────────────────
+function RequestsView(){
+  const [modal,setModal]=useState(null);
+  const [reqs,setReqs]=useState(REQS);
+  const [reqLoading,setReqLoading]=useState(true);
+  useEffect(()=>{
+    fetchPendingRequests().then(data=>{
+      if(data.length>0)setReqs(data.map(r=>({
+        id:r.id,
+        type:r.request_type==='swap'?'cambio':'vacaciones',
+        name:r.requester?.full_name||'–',
+        av:(r.requester?.full_name||'??').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase(),
+        desc:r.request_type==='swap'?`Cambio ${r.requester_date} → ${r.target_date}`:`Vacaciones ${r.vacation_start} – ${r.vacation_end}`,
+        date:new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'})
+      })));
+      setReqLoading(false);
+    });
+  },[]);
+  return(
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+        <h2 style={{fontSize:15,fontWeight:500}}>Solicitudes de operadores</h2>
+        <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+          <button className="btn btn-ghost" onClick={()=>setModal('cambio')}>+ Cambio de turno</button>
+          <button className="btn btn-primary" onClick={()=>setModal('vacaciones')}>+ Solicitar vacaciones</button>
+        </div>
+      </div>
+      <div className="alert alert-info" style={{marginBottom:16}}><span>📋</span><span>{reqLoading?'Cargando solicitudes…':`${reqs.length} solicitud${reqs.length!==1?'es':''} pendiente${reqs.length!==1?'s':''} de revisión`}</span></div>
+      {reqs.map(r=>(
+        <div key={r.id} className="req-item">
+          <div className="req-av">{r.av}</div>
+          <div className="req-info">
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+              <span className="req-name">{r.name}</span>
+              <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':'var(--green)',borderColor:r.type==='cambio'?'var(--blue2)':'var(--green2)'}}>{r.type==='cambio'?'Cambio turno':'Vacaciones'}</span>
+              <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
+            </div>
+            <div className="req-desc">{r.desc}</div>
+          </div>
+          <div className="req-actions">
+            <button className="btn btn-ok btn-sm">✓ Aprobar</button>
+            <button className="btn btn-danger btn-sm">✗ Rechazar</button>
+          </div>
+        </div>
+      ))}
+      {modal&&(
+        <div className="modal-overlay" onClick={()=>setModal(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">{modal==='cambio'?'Solicitar cambio de turno':'Solicitar vacaciones'}</div>
+            <div className="modal-sub">La solicitud será enviada a responsables por Teams y correo</div>
+            {modal==='cambio'?(
+              <>
+                <div className="fg"><label className="fl">Solicitante</label><select className="fs">{EMPS.map(e=><option key={e}>{e}</option>)}</select></div>
+                <div className="frow"><div className="fg"><label className="fl">Mi turno (fecha)</label><input type="date" className="fi"/></div><div className="fg"><label className="fl">Tipo</label><select className="fs"><option>Mañana</option><option>Tarde</option><option>Noche</option></select></div></div>
+                <div className="fg"><label className="fl">Cambiar con</label><select className="fs">{EMPS.map(e=><option key={e}>{e}</option>)}</select></div>
+                <div className="frow"><div className="fg"><label className="fl">Su turno (fecha)</label><input type="date" className="fi"/></div><div className="fg"><label className="fl">Tipo</label><select className="fs"><option>Mañana</option><option>Tarde</option><option>Noche</option></select></div></div>
+              </>
+            ):(
+              <>
+                <div className="fg"><label className="fl">Solicitante</label><select className="fs">{EMPS.map(e=><option key={e}>{e}</option>)}</select></div>
+                <div className="frow"><div className="fg"><label className="fl">Fecha inicio</label><input type="date" className="fi"/></div><div className="fg"><label className="fl">Fecha fin</label><input type="date" className="fi"/></div></div>
+                <div className="fg"><label className="fl">Tipo</label><select className="fs"><option>Vacaciones 2026</option><option>Vacaciones pendientes 2025</option></select></div>
+                <div className="fg"><label className="fl">Observaciones</label><textarea className="fi" rows={2} placeholder="Información adicional..."/></div>
+              </>
+            )}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:4}}>
+              <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={()=>{setModal(null);alert('Solicitud enviada. Notificación enviada por Teams y correo.');}}>Enviar solicitud</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ADMIN ──────────────────────────────────────────────────────────────────────
+function AdminView(){
+  const [showNE,setShowNE]=useState(false);
+  const [diagResults,setDiagResults]=useState(null);
+  const [diagLoading,setDiagLoading]=useState(false);
+  const [rules,setRules]=useState(INIT_RULES);
+  const [editRules,setEditRules]=useState(false);
+  const [draftRules,setDraftRules]=useState(null);
+  const [showAddRule,setShowAddRule]=useState(false);
+  const [newRule,setNewRule]=useState({label:'',weekday:'',weekend:'',unit:'operadores'});
+  const [ruleSaving,setRuleSaving]=useState(false);
+
+  // Load rules from DB on mount
+  useEffect(()=>{fetchCoverageRules().then(dbRules=>{if(dbRules.length>0)setRules(dbRules);});},[]);
+
+  const startEdit=()=>{setDraftRules(rules.map(r=>({...r})));setEditRules(true);};
+  const cancelEdit=()=>{setEditRules(false);setDraftRules(null);};
+  const saveEdit=async()=>{
+    setRuleSaving(true);
+    for(const r of draftRules){await saveCoverageRule({id:r.id,label:r.label,weekday_value:r.weekday_value??r.weekday,weekend_value:r.weekend_value??r.weekend,unit:r.unit,sort_order:r.sort_order||0});}
+    const fresh=await fetchCoverageRules();
+    if(fresh.length>0)setRules(fresh);
+    setEditRules(false);setDraftRules(null);setRuleSaving(false);
+  };
+  const updateDraft=(id,field,val)=>setDraftRules(d=>d.map(r=>r.id===id?{...r,[field]:val}:r));
+  const deleteRule=async(id)=>{
+    setDraftRules(d=>d.filter(r=>r.id!==id));
+    await deleteRule(id);
+  };
+  const addRule=async()=>{
+    if(!newRule.label.trim())return;
+    const r={label:newRule.label,weekday_value:newRule.weekday===''?null:Number(newRule.weekday),weekend_value:newRule.weekend===''?null:Number(newRule.weekend),unit:newRule.unit,sort_order:rules.length+1};
+    await insertRule(r);
+    const fresh=await fetchCoverageRules();
+    if(fresh.length>0)setRules(fresh);
+    setNewRule({label:'',weekday:'',weekend:'',unit:'operadores'});
+    setShowAddRule(false);
+  };
+
+  const active=editRules?draftRules:rules;
+
+  return(
+    <div>
+      <div className="alert alert-info" style={{marginBottom:20}}><span>🔒</span><span>Panel de administración — acceso restringido a Coordinador y Responsable</span></div>
+
+      {/* Solicitudes pendientes */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><span className="card-title">Solicitudes pendientes</span><span className="notif">{REQS.length}</span></div>
+        {REQS.map(r=>(
+          <div key={r.id} className="req-item">
+            <div className="req-av">{r.av}</div>
+            <div className="req-info">
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                <span className="req-name">{r.name}</span>
+                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':'var(--green)',borderColor:r.type==='cambio'?'var(--blue2)':'var(--green2)'}}>{r.type==='cambio'?'Cambio turno':'Vacaciones'}</span>
+                <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
+              </div>
+              <div className="req-desc">{r.desc}</div>
+            </div>
+            <div className="req-actions">
+              <button className="btn btn-ok btn-sm" onClick={async()=>{
+                await updateRequestStatus(r.id,'approved',null);
+                // If it's a shift swap, apply it to the shifts table
+                if(r.type==='cambio'&&r.requester_date&&r.target_date){
+                  await saveShift(r.name,r.requester_date,r.target_shift||'');
+                  if(r.target_name)await saveShift(r.target_name,r.target_date,r.requester_shift||'');
+                }
+                setReqs(prev=>prev.filter(x=>x.id!==r.id));
+              }}>✓ Aprobar</button>
+              <button className="btn btn-danger btn-sm" onClick={async()=>{
+                await updateRequestStatus(r.id,'rejected',null);
+                setReqs(prev=>prev.filter(x=>x.id!==r.id));
+              }}>✗ Rechazar</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid-2" style={{marginBottom:16}}>
+        {/* Gestión operadores */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Gestión de operadores</span>
+            <button className="btn btn-primary" style={{fontSize:12}} onClick={()=>setShowNE(true)}>+ Alta operador</button>
+          </div>
+          <div className="alert alert-warn"><span>⚡</span><span>2 incorporaciones pendientes. Objetivo: 21–22 operadores.</span></div>
+          <table className="emp-table" style={{marginTop:8}}>
+            <thead><tr><th>Operador</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              {EMPS.slice(0,6).map(e=><tr key={e}><td style={{fontWeight:500}}>{e}</td><td><span className="pill pill-ok">Activo</span></td><td><button className="btn btn-ghost btn-sm">Editar</button></td></tr>)}
+              <tr><td style={{fontWeight:500}}>Manuel Saelices</td><td><span className="pill pill-bad">Baja</span></td><td><button className="btn btn-ghost btn-sm">Editar</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Coverage rules — editable */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Reglas de cobertura</span>
+            <div style={{display:'flex',gap:6}}>
+              {!editRules?(
+                <button className="btn btn-ghost btn-sm" onClick={startEdit}>✏️ Editar</button>
+              ):(
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancelar</button>
+                  <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={ruleSaving}>{ruleSaving?'Guardando…':'Guardar cambios'}</button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {editRules&&(
+            <div className="alert alert-info" style={{marginBottom:12,fontSize:11}}>
+              <span>ℹ️</span><span>Modifica los valores directamente. Los cambios se aplican al guardar.</span>
+            </div>
+          )}
+
+          {/* Header */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 80px 80px 60px',gap:8,padding:'4px 0 6px',borderBottom:'1px solid var(--border)'}}>
+            <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em'}}>Regla</span>
+            <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',textAlign:'center'}}>L–V / Valor</span>
+            <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',textAlign:'center'}}>Finde</span>
+            {editRules&&<span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',textAlign:'center'}}></span>}
+          </div>
+
+          {active.map((rule,idx)=>(
+            <div key={rule.id} className="rule-row" style={{display:'grid',gridTemplateColumns:'1fr 80px 80px 60px',gap:8,alignItems:'center',padding:'8px 0',borderBottom:'1px solid rgba(42,51,80,.35)'}}>
+              {editRules
+                ?<input className="rule-input" value={rule.label} onChange={e=>updateDraft(rule.id,'label',e.target.value)}/>
+                :<span style={{fontSize:13}}>{rule.label}</span>
+              }
+              {editRules
+                ?<input type="number" className="rule-num" value={rule.weekday_value??rule.weekday??''} onChange={e=>updateDraft(rule.id,'weekday',e.target.value===''?null:Number(e.target.value))} placeholder="–"/>
+                :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{rule.weekday_value??rule.weekday??'–'} <span style={{fontSize:10,color:'var(--text3)'}}>{rule.unit}</span></span>
+              }
+              {editRules
+                ?<input type="number" className="rule-num" value={rule.weekend_value??rule.weekend??''} onChange={e=>updateDraft(rule.id,'weekend',e.target.value===''?null:Number(e.target.value))} placeholder="–"/>
+                :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{(rule.weekend_value??rule.weekend)!=null?(rule.weekend_value??rule.weekend):'–'}</span>
+              }
+              {editRules
+                ?<button className="btn btn-danger btn-sm" style={{padding:'3px 8px',fontSize:11}} onClick={()=>deleteRule(rule.id)}>✕</button>
+                :<span className={`pill pill-ok`} style={{fontSize:10,justifyContent:'center'}}>OK</span>
+              }
+            </div>
+          ))}
+
+          {editRules&&!showAddRule&&(
+            <button className="btn btn-ghost" style={{width:'100%',marginTop:10,fontSize:12}} onClick={()=>setShowAddRule(true)}>+ Añadir regla</button>
+          )}
+
+          {editRules&&showAddRule&&(
+            <div style={{marginTop:10,padding:12,background:'var(--bg3)',borderRadius:6,border:'1px solid var(--border)'}}>
+              <div style={{fontSize:12,fontWeight:500,color:'var(--text2)',marginBottom:8}}>Nueva regla</div>
+              <input className="rule-input" style={{marginBottom:6}} placeholder="Descripción de la regla" value={newRule.label} onChange={e=>setNewRule(p=>({...p,label:e.target.value}))}/>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:6}}>
+                <input type="number" className="rule-num" placeholder="Valor L-V" value={newRule.weekday} onChange={e=>setNewRule(p=>({...p,weekday:e.target.value}))}/>
+                <input type="number" className="rule-num" placeholder="Valor Finde" value={newRule.weekend} onChange={e=>setNewRule(p=>({...p,weekend:e.target.value}))}/>
+                <input className="rule-input" placeholder="Unidad (ej: operadores)" value={newRule.unit} onChange={e=>setNewRule(p=>({...p,unit:e.target.value}))}/>
+              </div>
+              <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setShowAddRule(false)}>Cancelar</button>
+                <button className="btn btn-primary btn-sm" onClick={addRule}>Añadir</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Diagnósticos DB */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header">
+          <span className="card-title">Diagnóstico conexión BD</span>
+          <button className="btn btn-ghost btn-sm" style={{fontSize:11}} onClick={async()=>{
+            setDiagLoading(true);setDiagResults(null);
+            const r=await runDiagnostics();
+            setDiagResults(r);setDiagLoading(false);
+          }}>
+            {diagLoading?'Comprobando…':'▶ Ejecutar test'}
+          </button>
+        </div>
+        {diagResults&&(
+          <div>
+            {Object.entries(diagResults).map(([k,v])=>(
+              <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:12}}>
+                <span style={{width:10,height:10,borderRadius:'50%',background:v.startsWith('OK')?'var(--green)':v.startsWith('WARN')?'var(--amber)':'var(--red)',flexShrink:0}}/>
+                <span style={{fontFamily:'var(--mono)',color:'var(--text3)',width:140}}>{k}</span>
+                <span style={{color:v.startsWith('OK')?'var(--green)':v.startsWith('WARN')?'var(--amber)':'var(--red)'}}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!diagResults&&!diagLoading&&(
+          <div style={{fontSize:12,color:'var(--text3)'}}>Pulsa "Ejecutar test" para verificar la conexión con Supabase.</div>
+        )}
+      </div>
+
+      {/* Festivos */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">Festivos Madrid 2026</span></div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+          {FEST.map(f=>{const d=new Date(f+'T00:00:00');return(<span key={f} className="tag" style={{background:'rgba(247,184,79,.1)',color:'var(--amber)',borderColor:'rgba(247,184,79,.3)'}}>⚡ {d.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</span>);})}
+        </div>
+      </div>
+
+      {showNE&&(
+        <div className="modal-overlay" onClick={()=>setShowNE(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Alta de nuevo operador</div>
+            <div className="modal-sub">Se asignarán 2 semanas de onboarding automáticamente y se desplegará el turno anual</div>
+            <div className="frow"><div className="fg"><label className="fl">Nombre</label><input className="fi" placeholder="Nombre"/></div><div className="fg"><label className="fl">Apellidos</label><input className="fi" placeholder="Apellidos"/></div></div>
+            <div className="fg"><label className="fl">Email corporativo</label><input className="fi" type="email" placeholder="nombre@avatel.es"/></div>
+            <div className="frow"><div className="fg"><label className="fl">Fecha incorporación</label><input className="fi" type="date"/></div><div className="fg"><label className="fl">Turno base</label><select className="fs"><option>Mañana</option><option>Tarde</option><option>Noche</option></select></div></div>
+            <div className="alert alert-info" style={{margin:'4px 0 16px'}}><span>📋</span><span>2 semanas de <strong>Onboarding (O)</strong> asignadas automáticamente.</span></div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={()=>setShowNE(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={()=>{setShowNE(false);alert('Operador dado de alta. Onboarding asignado y turno desplegado.');}}>Dar de alta</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── APP ────────────────────────────────────────────────────────────────────────
+// ── CONSTANTS FOR NEW MODULES ────────────────────────────────────────────────
+const RESPONSABLES=[
+  {name:'Sergio Santos Ruiz',approver:'Joaquín',role:'responsable'},
+  {name:'Alberto Alvarez Paz',approver:'Joaquín',role:'coordinador'},
+];
+const N2_MEMBERS=['Sergio Santos Ruiz','Alberto Alvarez Paz','Arturo Chiappe Vela'];
+const SOCIEDAD='AVATEL TELECOM, S.A.';
+const ZONA='CENTRAL';
+const GUARDIA_N2_IMPORTE=250;
+const GUARDIA_N2_FESTIVO_IMPORTE=40;
+
+function getWeeks2026(){
+  const weeks=[];
+  const jan1=new Date(2026,0,1);
+  const day=jan1.getDay();
+  const offset=(day===0?1:day===1?0:8-day);
+  let mon=new Date(2026,0,1+offset);
+  let wn=1;
+  while(mon.getFullYear()<=2026){
+    const sun=new Date(mon);sun.setDate(sun.getDate()+6);
+    const endD=sun>new Date(2026,11,31)?new Date(2026,11,31):sun;
+    weeks.push({wn,start:new Date(mon),end:new Date(endD)});
+    mon=new Date(mon);mon.setDate(mon.getDate()+7);
+    wn++;if(wn>53)break;
+  }
+  return weeks;
+}
+const WEEKS_2026=getWeeks2026();
+
+function weekHasFestivo(week){
+  for(let i=0;i<7;i++){
+    const d=new Date(week.start);d.setDate(d.getDate()+i);
+    if(d.getFullYear()!==2026)continue;
+    const s=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(FEST.includes(s))return true;
+  }
+  return false;
+}
+
+// ── CALENDARIO N2 ─────────────────────────────────────────────────────────────
+function CalN2View(){
+  const today=new Date();
+  const [assignments,setAssignments]=useState(()=>{
+    const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%2];});return a;
+  });
+  const [filterMonth,setFilterMonth]=useState(-1);
+
+  const weeks=filterMonth===-1?WEEKS_2026:WEEKS_2026.filter(w=>w.start.getMonth()===filterMonth||w.end.getMonth()===filterMonth);
+  const assign=async(wn,person)=>{
+    setAssignments(p=>({...p,[wn]:person}));
+    await saveN2Assignment(wn, person);
+  };
+  const isCurrentWeek=(w)=>today>=w.start&&today<=w.end;
+
+  const summary=N2_MEMBERS.map(name=>{
+    const total=WEEKS_2026.filter(w=>assignments[w.wn]===name).length;
+    const withFest=WEEKS_2026.filter(w=>assignments[w.wn]===name&&weekHasFestivo(w)).length;
+    return{name,total,withFest};
+  });
+
+  return(
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:600,marginBottom:2}}>Calendario Guardia N2</div>
+          <div style={{fontSize:12,color:'var(--text3)'}}>Rotación semanal de responsables · 2026</div>
+        </div>
+        <select className="fs" style={{marginLeft:'auto',width:'auto',fontSize:12,padding:'5px 10px'}} value={filterMonth} onChange={e=>setFilterMonth(Number(e.target.value))}>
+          <option value={-1}>Todo el año</option>
+          {MN.map((m,i)=><option key={i} value={i}>{m}</option>)}
+        </select>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
+        {summary.map(s=>(
+          <div key={s.name} className="stat">
+            <div className="stat-label">Guardias asignadas</div>
+            <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:6}}>
+              <span className="stat-val" style={{color:'var(--orange)'}}>{s.total}</span>
+              <span style={{fontSize:12,color:'var(--text2)'}}>{s.name}</span>
+            </div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{s.withFest} con festivo · {(s.total*GUARDIA_N2_IMPORTE+s.withFest*GUARDIA_N2_FESTIVO_IMPORTE).toLocaleString('es-ES')}€ est.</div>
+          </div>
+        ))}
+      </div>
+      <div className="alert alert-info" style={{marginBottom:12}}>
+        <span>ℹ️</span><span>Haz clic en el nombre para cambiar la asignación. ⚡ = semana con festivo incluido.</span>
+      </div>
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <table style={{width:'100%',borderCollapse:'collapse'}}>
+          <thead>
+            <tr style={{background:'var(--bg3)'}}>
+              {['Semana','Período','Fest.','Responsable N2','Importe'].map((h,i)=>(
+                <th key={h} style={{padding:'10px 14px',textAlign:i===3?'left':'center',fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',borderBottom:'1px solid var(--border)'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map((w,i)=>{
+              const assigned=assignments[w.wn]||N2_MEMBERS[0];
+              const hasFest=weekHasFestivo(w);
+              const isCur=isCurrentWeek(w);
+              const imp=GUARDIA_N2_IMPORTE+(hasFest?GUARDIA_N2_FESTIVO_IMPORTE:0);
+              return(
+                <tr key={w.wn} style={{background:isCur?'rgba(79,142,247,.08)':i%2===0?'transparent':'rgba(255,255,255,.01)',borderBottom:'1px solid rgba(42,51,80,.3)'}}>
+                  <td style={{padding:'10px 14px',textAlign:'center'}}>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                      <span style={{fontFamily:'var(--mono)',fontSize:12,color:'var(--text3)'}}>S{String(w.wn).padStart(2,'0')}</span>
+                      {isCur&&<span className="pill pill-blue" style={{fontSize:9}}>Actual</span>}
+                    </div>
+                  </td>
+                  <td style={{padding:'10px 14px',fontSize:12,textAlign:'center',color:'var(--text2)'}}>
+                    {w.start.toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – {w.end.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}
+                  </td>
+                  <td style={{padding:'10px 14px',textAlign:'center'}}>{hasFest?<span style={{color:'var(--amber)'}}>⚡</span>:<span style={{color:'var(--text3)'}}>–</span>}</td>
+                  <td style={{padding:'10px 14px'}}>
+                    <div style={{display:'flex',gap:6}}>
+                      {N2_MEMBERS.map(m=>(
+                        <button key={m} onClick={()=>assign(w.wn,m)}
+                          style={{padding:'4px 12px',borderRadius:5,border:'1px solid',fontSize:12,cursor:'pointer',transition:'all .15s',
+                            borderColor:assigned===m?'var(--orange)':'var(--border)',
+                            background:assigned===m?'var(--orange3)':'var(--bg3)',
+                            color:assigned===m?'var(--orange)':'var(--text2)',fontWeight:assigned===m?600:400}}>
+                          {m.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td style={{padding:'10px 14px',textAlign:'right',fontFamily:'var(--mono)',fontSize:12,color:hasFest?'var(--amber)':'var(--text2)'}}>
+                    {imp}€{hasFest&&<span style={{fontSize:10,marginLeft:4}}>(+fest)</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── RESUMEN RRHH ──────────────────────────────────────────────────────────────
+function ResumenRRHH(){
+  const today=new Date();
+  const [selMonth,setSelMonth]=useState(today.getMonth());
+  const [n2Assigns]=useState(()=>{const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%2];});return a;});
+  const [extraRows,setExtraRows]=useState([]);
+  const [showAddRow,setShowAddRow]=useState(false);
+  const [newRow,setNewRow]=useState({emp:'',tipo:'horas_extra',horas:'',fecha:'',desc:''});
+
+  const monthKey=MONTHS[selMonth];
+  const md=SD[monthKey]||{};
+  const mesNum=selMonth+1;
+
+  const getApprover=(empName)=>{
+    if(RESPONSABLES.find(r=>r.name===empName))return'Joaquín';
+    return'Sergio Santos Ruiz';
+  };
+
+  const rows=useMemo(()=>{
+    const result=[];
+    const days=MD[selMonth];
+    EMPS.forEach(emp=>{
+      const empKey=EMP_SHORT[emp]||emp;
+      let horasExtra=0,horasFestivos=0,plusNoc=0;
+      const festDates=[],nDates=[];
+      for(let i=0;i<days;i++){
+        const shift=(md[empKey]||[])[i]||'';
+        const d=new Date(2026,selMonth,i+1);
+        const isFestD=isFest(selMonth,i+1)||d.getDay()===0;
+        if(shift==='D'){if(isFestD)horasFestivos+=8;else horasExtra+=8;}
+        if(shift==='N'){plusNoc++;horasFestivos+=8;nDates.push((i+1)+'/'+mesNum);}
+        if((shift==='M'||shift==='T')&&isFestD){horasFestivos+=8;festDates.push((i+1)+'/'+mesNum);}
+      }
+      // N2 guardias for this person this month
+      const myWeeks=WEEKS_2026.filter(w=>{
+        if(n2Assigns[w.wn]!==emp)return false;
+        return w.start.getMonth()===selMonth||w.end.getMonth()===selMonth;
+      });
+      const guardiaImp=myWeeks.length*GUARDIA_N2_IMPORTE;
+      const guardiaFestImp=myWeeks.filter(w=>weekHasFestivo(w)).length*GUARDIA_N2_FESTIVO_IMPORTE;
+      const approver=getApprover(emp);
+
+      if(horasExtra>0)result.push({emp,approver,tipo:'Horas Extra',horasExtra,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:festDates.slice(0,4).join(', ')||'',desc:'Horas extraordinarias'});
+      if(horasFestivos>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:[...nDates,...festDates].slice(0,4).join(', ')||'',desc:'Turno nocturno y/o festivo'});
+      if(guardiaImp>0)result.push({emp,approver,tipo:'Guardia N2',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:guardiaImp,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 semanal'});
+      if(guardiaFestImp>0)result.push({emp,approver,tipo:'Guardia N2 Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:guardiaFestImp,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.filter(w=>weekHasFestivo(w)).map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 festivo'});
+      if(plusNoc>0)result.push({emp,approver,tipo:'Plus NOC',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,fecha:'',desc:'Plus nocturnidad — '+plusNoc+' noches'});
+    });
+    extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
+    return result;
+  },[selMonth,n2Assigns,extraRows,md]);
+
+  const COL=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA','Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM','GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC','FECHA Y HORA','DESCRIPCIÓN'];
+
+  return(
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:600,marginBottom:2}}>Resumen RRHH</div>
+          <div style={{fontSize:12,color:'var(--text3)'}}>Informe mensual incidencias nómina · NOC Central</div>
+        </div>
+        <div style={{display:'flex',gap:8,marginLeft:'auto',alignItems:'center'}}>
+          <select className="fs" style={{width:'auto',fontSize:12,padding:'5px 10px'}} value={selMonth} onChange={e=>setSelMonth(Number(e.target.value))}>
+            {MN.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
+          </select>
+          <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setShowAddRow(true)}>+ Entrada manual</button>
+          <button className="btn btn-primary" style={{fontSize:12}} onClick={()=>{
+            // Build data array for SheetJS
+            const headers=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA',
+              'Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM',
+              'GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC',
+              'FECHA Y HORA','DESCRIPCIÓN DEL TRABAJO'];
+            const dataRows=rows.map(r=>[
+              mesNum, r.emp, '', r.approver,
+              r.horasExtra||'', r.horasFestivos||'', r.horasExtraFM||'', r.horasFestFM||'',
+              r.guardiasE||'', r.guardiasFE||'', r.comisiones||'', r.km||'',
+              r.plusNoc||'', r.fecha||'', r.desc||''
+            ]);
+            const ws=XLSX.utils.aoa_to_sheet([headers,...dataRows]);
+            // Column widths
+            ws['!cols']=[{wch:5},{wch:30},{wch:12},{wch:25},{wch:14},{wch:16},{wch:18},{wch:20},{wch:14},{wch:18},{wch:14},{wch:16},{wch:10},{wch:22},{wch:40}];
+            const wb=XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb,ws,`${MN[selMonth]}-2026`);
+            XLSX.writeFile(wb,`RRHH_NOC_${MN[selMonth]}_2026.xlsx`);
+          }}>↓ Exportar XLSX</button>
+        </div>
+      </div>
+      <div className="grid-2" style={{marginBottom:16}}>
+        <div className="alert alert-info" style={{marginBottom:0}}><span>📋</span><span>Tabla generada automáticamente. Revisa antes de exportar. Envío automático el día 3 del mes siguiente.</span></div>
+        <div className="alert alert-warn" style={{marginBottom:0}}><span>⚡</span><span>Operadores → aprobador <strong>Sergio Santos Ruiz</strong>. Si empleado es Sergio o Alberto → aprobador <strong>Joaquín</strong>.</span></div>
+      </div>
+      {rows.length===0?(
+        <div className="card" style={{textAlign:'center',padding:40,color:'var(--text3)'}}><div style={{fontSize:20,marginBottom:8}}>📄</div>Sin entradas para {MN[selMonth]} 2026</div>
+      ):(
+        <div className="card" style={{padding:0,overflow:'hidden'}}>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+              <thead>
+                <tr style={{background:'var(--bg3)'}}>
+                  {COL.map(h=>(
+                    <th key={h} style={{padding:'8px 10px',textAlign:'left',fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',fontSize:10}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r,i)=>(
+                  <tr key={i} style={{borderBottom:'1px solid rgba(42,51,80,.3)',background:i%2===0?'transparent':'rgba(255,255,255,.01)'}}>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)'}}>{mesNum}</td>
+                    <td style={{padding:'8px 10px',fontWeight:500,whiteSpace:'nowrap'}}>{r.emp}</td>
+                    <td style={{padding:'8px 10px',color:'var(--text3)',fontSize:10}}>—</td>
+                    <td style={{padding:'8px 10px',whiteSpace:'nowrap',fontSize:12}}>{r.approver}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.horasExtra>0?'var(--blue)':'var(--text3)'}}>{r.horasExtra||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.horasFestivos>0?'var(--amber)':'var(--text3)'}}>{r.horasFestivos||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:'var(--text3)'}}>{r.horasExtraFM||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:'var(--text3)'}}>{r.horasFestFM||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.guardiasE>0?'var(--orange)':'var(--text3)'}}>{r.guardiasE||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.guardiasFE>0?'var(--amber)':'var(--text3)'}}>{r.guardiasFE||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:'var(--text3)'}}>–</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:'var(--text3)'}}>–</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.plusNoc>0?'#c084fc':'var(--text3)'}}>{r.plusNoc||'–'}</td>
+                    <td style={{padding:'8px 10px',color:'var(--text2)',fontSize:10,whiteSpace:'nowrap'}}>{r.fecha||'–'}</td>
+                    <td style={{padding:'8px 10px',color:'var(--text2)',maxWidth:160,fontSize:11}}>{r.desc}</td>
+
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',fontSize:11,color:'var(--text3)',display:'flex',justifyContent:'space-between'}}>
+            <span>{rows.length} filas · {MN[selMonth]} 2026</span>
+          </div>
+        </div>
+      )}
+      {showAddRow&&(
+        <div className="modal-overlay" onClick={()=>setShowAddRow(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Entrada manual</div>
+            <div className="modal-sub">Para km, comisiones, fuerza mayor u otros conceptos no automáticos</div>
+            <div className="fg"><label className="fl">Operador</label>
+              <select className="fs" value={newRow.emp} onChange={e=>setNewRow(p=>({...p,emp:e.target.value}))}>
+                <option value="">Seleccionar…</option>
+                {[...EMPS,...N2_MEMBERS].filter((v,i,a)=>a.indexOf(v)===i).map(e=><option key={e}>{e}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label className="fl">Tipo de incidencia</label>
+              <select className="fs" value={newRow.tipo} onChange={e=>setNewRow(p=>({...p,tipo:e.target.value}))}>
+                <option value="horas_extra">Horas extra (L-V 7-22)</option>
+                <option value="horas_festivo">Horas festivo/nocturno</option>
+                <option value="horas_fm">Horas fuerza mayor</option>
+                <option value="guardia">Guardia (€)</option>
+                <option value="km">Kilometraje (km)</option>
+                <option value="comision">Comisión (€)</option>
+              </select>
+            </div>
+            <div className="frow">
+              <div className="fg"><label className="fl">Horas / Importe / KM</label><input className="fi" type="number" value={newRow.horas} onChange={e=>setNewRow(p=>({...p,horas:e.target.value}))} placeholder="0"/></div>
+              <div className="fg"><label className="fl">Fecha y hora</label><input className="fi" value={newRow.fecha} onChange={e=>setNewRow(p=>({...p,fecha:e.target.value}))} placeholder="3/3 18:00 a 20:00"/></div>
+            </div>
+            <div className="fg"><label className="fl">Descripción</label><input className="fi" value={newRow.desc} onChange={e=>setNewRow(p=>({...p,desc:e.target.value}))} placeholder="Motivo…"/></div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:4}}>
+              <button className="btn btn-ghost" onClick={()=>setShowAddRow(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={()=>{
+                if(!newRow.emp)return;
+                const h=Number(newRow.horas)||0;
+                const row={emp:newRow.emp,approver:getApprover(newRow.emp),tipo:newRow.tipo,
+                  horasExtra:newRow.tipo==='horas_extra'?h:0,horasFestivos:newRow.tipo==='horas_festivo'?h:0,
+                  horasExtraFM:newRow.tipo==='horas_fm'?h:0,horasFestFM:0,
+                  guardiasE:newRow.tipo==='guardia'?h:0,guardiasFE:0,
+                  comisiones:newRow.tipo==='comision'?h:0,km:newRow.tipo==='km'?h:0,
+                  plusNoc:0,fecha:newRow.fecha,desc:newRow.desc,month:selMonth};
+                setExtraRows(p=>[...p,row]);
+                setNewRow({emp:'',tipo:'horas_extra',horas:'',fecha:'',desc:''});
+                setShowAddRow(false);
+              }}>Añadir</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── APP ────────────────────────────────────────────────────────────────────────
+function App(){
+  const [page,setPage]=useState('today');
+  const [adminOpen,setAdminOpen]=useState(true);
+  const P={today:TodayView,calendar:()=><CalendarView isAdmin={true}/>,team:TeamView,requests:RequestsView,admin:AdminView,caln2:CalN2View,rrhh:ResumenRRHH};
+  const Pg=P[page]||TodayView;
+  const titles={today:'Vista del día',calendar:'Calendario anual',team:'Equipo',requests:'Solicitudes',admin:'Administración',caln2:'Calendario Guardia N2',rrhh:'Resumen RRHH'};
+  const adminPages=['admin','caln2','rrhh'];
+  return(
+    <div className="app">
+      <div className="sidebar">
+        <div className="sidebar-logo"><h1>NOC Turnos</h1><span>Avatel Telecom · 2026</span></div>
+        <div className="nav">
+          <div className="nav-section">Principal</div>
+          {['today','calendar','team'].map(k=>(
+            <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
+              <NI n={k==='today'?'today':k==='calendar'?'calendar':'team'}/>{k==='today'?'Hoy':k==='calendar'?'Calendario':'Equipo'}
+            </div>
+          ))}
+          <div className="nav-section">Gestión</div>
+          <div className={`nav-item ${page==='requests'?'active':''}`} onClick={()=>setPage('requests')}><NI n="requests"/>Solicitudes<span className="notif" style={{marginLeft:'auto'}}>3</span></div>
+          <div className={`nav-item ${adminPages.includes(page)?'active':''}`} style={{justifyContent:'space-between'}}
+            onClick={()=>{setAdminOpen(o=>!o);if(!adminPages.includes(page))setPage('admin');}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}><NI n="admin"/>Administración</div>
+            <span style={{fontSize:9,transition:'transform .2s',display:'inline-block',transform:adminOpen?'rotate(90deg)':'rotate(0deg)'}}>▶</span>
+          </div>
+          {adminOpen&&(
+            <div style={{paddingLeft:12}}>
+              {[{k:'admin',l:'Panel admin'},{k:'caln2',l:'Calendario N2'},{k:'rrhh',l:'Resumen RRHH'}].map(({k,l})=>(
+                <div key={k} className={`nav-item ${page===k?'active':''}`} style={{fontSize:12,padding:'7px 10px'}} onClick={()=>setPage(k)}>
+                  <span style={{width:6,height:6,borderRadius:'50%',background:page===k?'var(--blue)':'var(--text3)',flexShrink:0,marginLeft:4}}/>{l}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="sidebar-bottom">
+          <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
+            <div style={{marginBottom:3}}>v2.1 — Backend + XLSX + Aprobaciones</div>
+            <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
+          </div>
+        </div>
+      </div>
+      <div className="main">
+        <div className="topbar">
+          <span className="topbar-title">{titles[page]}</span>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontSize:12,color:'var(--text3)'}}>{new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>
+            <div style={{width:30,height:30,borderRadius:'50%',background:'var(--bg4)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:'pointer'}}>SR</div>
+          </div>
+        </div>
+        <div className="content"><Pg/></div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
