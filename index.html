@@ -781,8 +781,18 @@ function RequestsView(){
             <div className="req-desc">{r.desc}</div>
           </div>
           <div className="req-actions">
-            <button className="btn btn-ok btn-sm">✓ Aprobar</button>
-            <button className="btn btn-danger btn-sm">✗ Rechazar</button>
+            <button className="btn btn-ok btn-sm" onClick={async()=>{
+                setReqs(prev=>prev.filter(x=>x.id!==r.id));
+                if(r.id && typeof r.id === 'string' && r.id.includes('-')){
+                  await updateRequestStatus(r.id,'approved',null);
+                }
+              }}>✓ Aprobar</button>
+              <button className="btn btn-danger btn-sm" onClick={async()=>{
+                setReqs(prev=>prev.filter(x=>x.id!==r.id));
+                if(r.id && typeof r.id === 'string' && r.id.includes('-')){
+                  await updateRequestStatus(r.id,'rejected',null);
+                }
+              }}>✗ Rechazar</button>
           </div>
         </div>
       ))}
@@ -1475,7 +1485,7 @@ function App(){
         </div>
         <div className="sidebar-bottom">
           <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v2.5 — Solicitudes BD real</div>
+            <div style={{marginBottom:3}}>v2.6 — Fix Aprobar/Rechazar</div>
             <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
           </div>
         </div>
