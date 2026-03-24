@@ -165,6 +165,35 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .rule-num:focus{border-color:var(--blue)}
 /* Multi-select banner */
 .sel-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--blue3);border:1px solid var(--blue2);border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px}
+/* ── LOGIN ─────────────────────────────────────────────────────────────────── */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
+.login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:40px 36px;width:100%;max-width:390px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.login-logo{margin-bottom:32px;text-align:center}
+.login-logo h1{font-size:22px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
+.login-logo p{font-size:12px;color:var(--text3)}
+.login-logo .login-icon{width:52px;height:52px;background:var(--blue2);border:1px solid var(--blue);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 16px}
+.login-err{background:var(--red2);border:1px solid rgba(247,95,95,.4);color:var(--red);padding:10px 12px;border-radius:var(--radius-sm);font-size:12px;margin-bottom:14px}
+.login-hint{margin-top:16px;text-align:center;font-size:11px;color:var(--text3)}
+/* ── OPERATOR DASHBOARD ───────────────────────────────────────────────────── */
+.op-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.op-shift-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(42,51,80,.4)}
+.op-shift-item:last-child{border-bottom:none}
+.op-req-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(42,51,80,.4);font-size:12px}
+.op-req-item:last-child{border-bottom:none}
+/* ── PROFILE ──────────────────────────────────────────────────────────────── */
+.profile-avatar{width:80px;height:80px;border-radius:50%;border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:var(--blue);background:var(--bg4);margin:0 auto 8px;overflow:hidden;cursor:pointer;transition:opacity .15s}
+.profile-avatar:hover{opacity:.8}
+.profile-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.profile-success{background:var(--green2);border:1px solid rgba(79,201,122,.3);color:var(--green);padding:10px 12px;border-radius:var(--radius-sm);font-size:12px;margin-bottom:14px}
+/* ── SIDEBAR USER BLOCK ───────────────────────────────────────────────────── */
+.sidebar-user{padding:10px 12px;border-top:1px solid var(--border)}
+.sidebar-user-info{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.sidebar-user-av{width:28px;height:28px;border-radius:50%;background:var(--blue2);border:1px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0;overflow:hidden}
+.sidebar-user-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.sidebar-user-name{font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-user-role{font-size:10px;color:var(--text3);text-transform:capitalize}
+.sidebar-user-actions{display:flex;gap:6px}
+.sidebar-user-actions .nav-item{flex:1;font-size:11px;padding:5px 8px;margin:0;border-radius:var(--radius-sm)}
 </style>
 </head>
 <body>
@@ -1001,12 +1030,12 @@ function RequestsView(){
           : `Vacaciones ${r.vacation_start||'?'} – ${r.vacation_end||'?'}`,
         date: new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
         requester_id: r.requester?.id,
-        target_id: r.target?.id,
-        target_name: r.target?.full_name,
         requester_date: r.requester_date,
         target_date: r.target_date,
         vacation_start: r.vacation_start,
-        vacation_end: r.vacation_end
+        vacation_end: r.vacation_end,
+        target_name: r.target?.full_name,
+        target_id: r.target?.id
       }));
       setReqs(mapped);
       setReqLoading(false);
@@ -1210,6 +1239,8 @@ function HistorialView(){
 
 function AdminView(){
   const [showNE,setShowNE]=useState(false);
+  const [editingEmp,setEditingEmp]=useState(null); // {id,full_name,short_name,email,role,username,active,newPassword}
+  const [empSaving,setEmpSaving]=useState(false);
   const [diagResults,setDiagResults]=useState(null);
   const [diagLoading,setDiagLoading]=useState(false);
   const [empList,setEmpList]=useState([]);
@@ -1266,7 +1297,7 @@ function AdminView(){
     setEditRules(false);setDraftRules(null);setRuleSaving(false);
   };
   const updateDraft=(id,field,val)=>setDraftRules(d=>d.map(r=>r.id===id?{...r,[field]:val}:r));
-  const deleteRule=async(id)=>{
+  const handleDeleteRule=async(id)=>{
     setDraftRules(d=>d.filter(r=>r.id!==id));
     await deleteRule(id);
   };
@@ -1286,63 +1317,6 @@ function AdminView(){
     <div>
       <div className="alert alert-info" style={{marginBottom:20}}><span>🔒</span><span>Panel de administración — acceso restringido a Coordinador y Responsable</span></div>
 
-      {/* Solicitudes pendientes */}
-      <div className="card" style={{marginBottom:16}}>
-        <div className="card-header"><span className="card-title">Solicitudes pendientes</span><span className="notif">{adminReqs.length}</span></div>
-        {adminReqsLoading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando...</div>}
-        {!adminReqsLoading&&adminReqs.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes pendientes.</div>}
-        {adminReqs.map(r=>(
-          <div key={r.id} className="req-item">
-            <div className="req-av">{r.av}</div>
-            <div className="req-info">
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                <span className="req-name">{r.name}</span>
-                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':'var(--green)',borderColor:r.type==='cambio'?'var(--blue2)':'var(--green2)'}}>{r.type==='cambio'?'Cambio turno':'Vacaciones'}</span>
-                <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
-              </div>
-              <div className="req-desc">{r.desc}</div>
-            </div>
-            <div className="req-actions">
-                            <button className="btn btn-ok btn-sm" onClick={async()=>{
-                setReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(!r.id||!r.id.includes('-'))return;
-                const empId=r.requester_id;
-                if(r.type==='vacaciones'&&empId&&r.vacation_start&&r.vacation_end){
-                  const days=[];let cur=r.vacation_start;
-                  while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
-                  console.log('[Aprobar vac]',days.length,'dias para',r.name);
-                  for(const day of days){
-                    const {error:ev}=await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});
-                    if(ev)console.error('[Aprobar]',day,ev.message);
-                  }
-                  const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
-                  if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
-                  const mkeys=[...new Set(days.map(d=>d.substring(0,7)))];
-                  mkeys.forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                  console.log('[Aprobar vac] DONE calVer='+window.__calendarVersion);
-                }else if(r.type==='cambio'&&empId&&r.requester_date&&r.target_date&&r.target_id){
-                  const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
-                  const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
-                  if(s1?.id)await sb.from('shifts').delete().eq('id',s1.id);
-                  if(s2?.id)await sb.from('shifts').delete().eq('id',s2.id);
-                  if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
-                  if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
-                  [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                  console.log('[Aprobar swap] DONE');
-                }
-                await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✓ Aprobar</button>
-              <button className="btn btn-danger btn-sm" onClick={async()=>{
-                setReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(r.id&&r.id.includes('-'))await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✗ Rechazar</button>
-            </div>
-          </div>
-        ))}
-      </div>
-
       <div className="grid-2" style={{marginBottom:16}}>
         {/* Gestión operadores */}
         <div className="card">
@@ -1353,19 +1327,23 @@ function AdminView(){
           <div className="alert alert-warn"><span>⚡</span><span>{empLoading?'Cargando...':`${empList.filter(e=>e.active).length} operadores activos. Objetivo: 21–22 operadores.`}</span></div>
           {empLoading
             ? <div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando operadores...</div>
-            : <table className="emp-table" style={{marginTop:8}}>
-                <thead><tr><th>Operador</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
-                <tbody>
-                  {empList.filter(e=>e.role==='operator'||e.role==='coordinator'||e.role==='manager'||e.role==='admin').map(e=>(
-                    <tr key={e.id}>
-                      <td style={{fontWeight:500}}>{e.full_name}</td>
-                      <td><span style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize'}}>{e.role}</span></td>
-                      <td><span className={`pill ${e.active?'pill-ok':'pill-bad'}`}>{e.active?'Activo':'Inactivo'}</span></td>
-                      <td><button className="btn btn-ghost btn-sm">Editar</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            : <div style={{maxHeight:316,overflowY:'auto',marginTop:8}}>
+                <table className="emp-table" style={{width:'100%'}}>
+                  <thead style={{position:'sticky',top:0,background:'var(--bg2)',zIndex:1}}>
+                    <tr><th>Operador</th><th>Rol</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {empList.filter(e=>e.role==='operator'||e.role==='coordinator'||e.role==='manager'||e.role==='admin'||e.role==='staff').map(e=>(
+                      <tr key={e.id}>
+                        <td style={{fontWeight:500}}>{e.full_name}</td>
+                        <td><span style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize'}}>{e.role}</span></td>
+                        <td><span className={`pill ${e.active?'pill-ok':'pill-bad'}`}>{e.active?'Activo':'Inactivo'}</span></td>
+                        <td><button className="btn btn-ghost btn-sm" onClick={()=>setEditingEmp({...e,newPassword:''})}>Editar</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
           }
         </div>
 
@@ -1414,7 +1392,7 @@ function AdminView(){
                 :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{(rule.weekend_value??rule.weekend)!=null?(rule.weekend_value??rule.weekend):'–'}</span>
               }
               {editRules
-                ?<button className="btn btn-danger btn-sm" style={{padding:'3px 8px',fontSize:11}} onClick={()=>deleteRule(rule.id)}>✕</button>
+                ?<button className="btn btn-danger btn-sm" style={{padding:'3px 8px',fontSize:11}} onClick={()=>handleDeleteRule(rule.id)}>✕</button>
                 :<span className={`pill pill-ok`} style={{fontSize:10,justifyContent:'center'}}>OK</span>
               }
             </div>
@@ -1440,6 +1418,56 @@ function AdminView(){
             </div>
           )}
         </div>
+      </div>
+
+      {/* Solicitudes pendientes — debajo del grid */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><span className="card-title">Solicitudes pendientes</span>{adminReqs.length>0&&<span className="notif">{adminReqs.length}</span>}</div>
+        {adminReqsLoading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando...</div>}
+        {!adminReqsLoading&&adminReqs.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes pendientes.</div>}
+        {adminReqs.map(r=>(
+          <div key={r.id} className="req-item">
+            <div className="req-av">{r.av}</div>
+            <div className="req-info">
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                <span className="req-name">{r.name}</span>
+                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':'var(--green)',borderColor:r.type==='cambio'?'var(--blue2)':'var(--green2)'}}>{r.type==='cambio'?'Cambio turno':'Vacaciones'}</span>
+                <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
+              </div>
+              <div className="req-desc">{r.desc}</div>
+            </div>
+            <div className="req-actions">
+              <button className="btn btn-ok btn-sm" onClick={async()=>{
+                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
+                if(!r.id||!r.id.includes('-'))return;
+                const empId=r.requester_id;
+                if(r.type==='vacaciones'&&empId&&r.vacation_start&&r.vacation_end){
+                  const days=[];let cur=r.vacation_start;
+                  while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
+                  for(const day of days){await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});}
+                  const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
+                  if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
+                  [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
+                  window.__calendarVersion=(window.__calendarVersion||0)+1;
+                }else if(r.type==='cambio'&&empId&&r.requester_date&&r.target_date&&r.target_id){
+                  const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
+                  const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
+                  if(s1?.id)await sb.from('shifts').delete().eq('id',s1.id);
+                  if(s2?.id)await sb.from('shifts').delete().eq('id',s2.id);
+                  if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
+                  if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
+                  [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
+                  window.__calendarVersion=(window.__calendarVersion||0)+1;
+                }
+                await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
+              }}>✓ Aprobar</button>
+              <button className="btn btn-danger btn-sm" onClick={async()=>{
+                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
+                if(r.id&&r.id.includes('-'))await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',r.id);
+              }}>✗ Rechazar</button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Historial de Solicitudes */}
@@ -1481,6 +1509,57 @@ function AdminView(){
         </div>
       </div>
 
+      {/* Modal Editar Empleado */}
+      {editingEmp&&(
+        <div className="modal-overlay" onClick={()=>setEditingEmp(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Editar operador</div>
+            <div className="modal-sub">{editingEmp.full_name}</div>
+            <div className="frow">
+              <div className="fg"><label className="fl">Nombre completo</label><input className="fi" value={editingEmp.full_name} onChange={e=>setEditingEmp(p=>({...p,full_name:e.target.value}))}/></div>
+              <div className="fg"><label className="fl">Nombre corto</label><input className="fi" value={editingEmp.short_name||''} onChange={e=>setEditingEmp(p=>({...p,short_name:e.target.value}))}/></div>
+            </div>
+            <div className="frow">
+              <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={editingEmp.email||''} onChange={e=>setEditingEmp(p=>({...p,email:e.target.value}))}/></div>
+              <div className="fg"><label className="fl">Username</label><input className="fi" value={editingEmp.username||''} onChange={e=>setEditingEmp(p=>({...p,username:e.target.value}))}/></div>
+            </div>
+            <div className="frow">
+              <div className="fg"><label className="fl">Rol</label>
+                <select className="fs" value={editingEmp.role} onChange={e=>setEditingEmp(p=>({...p,role:e.target.value}))}>
+                  <option value="operator">Operador</option>
+                  <option value="coordinator">Coordinador</option>
+                  <option value="manager">Responsable</option>
+                  <option value="admin">Admin</option>
+                  <option value="staff">Staff</option>
+                </select>
+              </div>
+              <div className="fg"><label className="fl">Estado</label>
+                <select className="fs" value={editingEmp.active?'1':'0'} onChange={e=>setEditingEmp(p=>({...p,active:e.target.value==='1'}))}>
+                  <option value="1">Activo</option>
+                  <option value="0">Inactivo</option>
+                </select>
+              </div>
+            </div>
+            <div className="fg">
+              <label className="fl">Nueva contraseña <span style={{color:'var(--text3)'}}>(dejar vacío para no cambiar)</span></label>
+              <input className="fi" type="password" placeholder="Nueva contraseña..." value={editingEmp.newPassword||''} onChange={e=>setEditingEmp(p=>({...p,newPassword:e.target.value}))}/>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+              <button className="btn btn-ghost" onClick={()=>setEditingEmp(null)}>Cancelar</button>
+              <button className="btn btn-primary" disabled={empSaving} onClick={async()=>{
+                setEmpSaving(true);
+                const upd={full_name:editingEmp.full_name,short_name:editingEmp.short_name,email:editingEmp.email||null,username:editingEmp.username,role:editingEmp.role,active:editingEmp.active};
+                if(editingEmp.newPassword&&editingEmp.newPassword.length>=4)upd.password=editingEmp.newPassword;
+                const {error}=await sb.from('employees').update(upd).eq('id',editingEmp.id);
+                if(error){alert('Error al guardar: '+error.message);}
+                else{fetchEmployees().then(data=>{setEmpList(data||[]);});setEditingEmp(null);}
+                setEmpSaving(false);
+              }}>{empSaving?'Guardando…':'Guardar cambios'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showNE&&(
         <div className="modal-overlay" onClick={()=>setShowNE(false)}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
@@ -1497,6 +1576,312 @@ function AdminView(){
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── LOGIN ──────────────────────────────────────────────────────────────────────
+function LoginView({onLogin}){
+  const [username,setUsername]=useState('');
+  const [password,setPassword]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  const handleLogin=async(e)=>{
+    e.preventDefault();
+    if(!username.trim()||!password){setError('Introduce usuario y contraseña');return;}
+    setLoading(true);setError('');
+    const {data:user,error:err}=await sb.from('employees')
+      .select('*')
+      .eq('username',username.trim().toLowerCase())
+      .eq('password',password)
+      .eq('active',true)
+      .maybeSingle();
+    setLoading(false);
+    if(err||!user){setError('Usuario o contraseña incorrectos');return;}
+    try{localStorage.setItem('noc_user',JSON.stringify({id:user.id,full_name:user.full_name,short_name:user.short_name,role:user.role,username:user.username,photo_url:user.photo_url||null}));}catch(e){}
+    onLogin(user);
+  };
+  return(
+    <div className="login-wrap">
+      <div className="login-box">
+        <div className="login-logo">
+          <div className="login-icon">📡</div>
+          <h1>NOC Turnos</h1>
+          <p>Avatel Telecom · Network Operations Center</p>
+        </div>
+        {error&&<div className="login-err">⚠ {error}</div>}
+        <form onSubmit={handleLogin}>
+          <div className="fg"><label className="fl">Usuario</label>
+            <input className="fi" type="text" placeholder="nombre.apellido" value={username} onChange={e=>setUsername(e.target.value)} autoFocus autoComplete="username"/>
+          </div>
+          <div className="fg"><label className="fl">Contraseña</label>
+            <input className="fi" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password"/>
+          </div>
+          <button type="submit" className="btn btn-primary" style={{width:'100%',padding:'11px',marginTop:8,fontSize:14,fontWeight:600}} disabled={loading}>
+            {loading?'Accediendo…':'Entrar'}
+          </button>
+        </form>
+        <div className="login-hint">¿Olvidaste tu contraseña? Contacta con el Responsable NOC</div>
+      </div>
+    </div>
+  );
+}
+
+// ── PENDING BADGE (para sidebar dinámico) ─────────────────────────────────────
+function PendingBadge({style}){
+  const [count,setCount]=useState(window.__pendingReqs||0);
+  useEffect(()=>{const t=setInterval(()=>setCount(window.__pendingReqs||0),2000);return()=>clearInterval(t);},[]);
+  if(!count)return null;
+  return <span className="notif" style={style}>{count}</span>;
+}
+
+// ── OPERATOR DASHBOARD ────────────────────────────────────────────────────────
+function OperatorDashboard({user}){
+  const [myShifts,setMyShifts]=useState([]);
+  const [myBalance,setMyBalance]=useState(null);
+  const [myReqs,setMyReqs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(null);
+
+  useEffect(()=>{
+    async function load(){
+      const today=new Date().toISOString().split('T')[0];
+      const in14=new Date(Date.now()+14*86400000).toISOString().split('T')[0];
+      const [{data:shifts},{data:reqs}]=await Promise.all([
+        sb.from('shifts').select('shift_date,shift_type').eq('employee_id',user.id).gte('shift_date',today).lte('shift_date',in14).order('shift_date'),
+        sb.from('shift_requests').select('*').eq('requester_id',user.id).order('created_at',{ascending:false}).limit(8)
+      ]);
+      setMyShifts(shifts||[]);
+      setMyReqs(reqs||[]);
+      const bal=await fetchVacationBalance(user.id);
+      setMyBalance(bal);
+      setLoading(false);
+    }
+    load();
+  },[user.id]);
+
+  const nextShifts=myShifts.slice(0,5);
+  const pending=myReqs.filter(r=>r.status==='pending');
+  const approved=myReqs.filter(r=>r.status==='approved');
+  const initials=(user.full_name||user.short_name||'??').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+  if(loading)return <div style={{padding:40,textAlign:'center',color:'var(--text3)'}}>Cargando tu panel...</div>;
+
+  return(
+    <div>
+      {/* Cabecera personal */}
+      <div className="card" style={{marginBottom:16,display:'flex',alignItems:'center',gap:20,padding:'20px 24px'}}>
+        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--blue2)',border:'2px solid var(--blue)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'var(--blue)',overflow:'hidden',flexShrink:0}}>
+          {user.photo_url?<img src={user.photo_url} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}} alt=""/>:initials}
+        </div>
+        <div>
+          <div style={{fontSize:18,fontWeight:600,marginBottom:2}}>{user.full_name||user.short_name}</div>
+          <div style={{fontSize:12,color:'var(--text3)',textTransform:'capitalize'}}>{user.role} · NOC Avatel</div>
+        </div>
+        <div style={{marginLeft:'auto',display:'flex',gap:12}}>
+          <div className="stat" style={{textAlign:'center',padding:'12px 20px',minWidth:90}}>
+            <div className="stat-label">Vacaciones</div>
+            <div className="stat-val" style={{fontSize:22,color:myBalance?(myBalance.days_remaining>=10?'var(--green)':myBalance.days_remaining>=5?'var(--amber)':'var(--red)'):'var(--text3)'}}>{myBalance?.days_remaining??'–'}</div>
+            <div className="stat-sub">{myBalance?`de ${myBalance.days_total} días`:''}</div>
+          </div>
+          <div className="stat" style={{textAlign:'center',padding:'12px 20px',minWidth:90}}>
+            <div className="stat-label">Pendientes</div>
+            <div className="stat-val" style={{fontSize:22,color:pending.length>0?'var(--amber)':'var(--text3)'}}>{pending.length}</div>
+            <div className="stat-sub">solicitudes</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid-2" style={{marginBottom:16}}>
+        {/* Próximos turnos */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Próximos turnos (14 días)</span>
+          </div>
+          {nextShifts.length===0
+            ?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay turnos asignados en los próximos 14 días.</div>
+            :nextShifts.map((s,i)=>{
+              const d=new Date(s.shift_date+'T00:00:00');
+              const isToday=s.shift_date===new Date().toISOString().split('T')[0];
+              return(
+                <div key={i} className="op-shift-item">
+                  <span className={`badge badge-${s.shift_type}`}>{s.shift_type}</span>
+                  <span style={{flex:1,fontSize:13}}>{d.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})}</span>
+                  {isToday&&<span className="pill pill-blue" style={{fontSize:10}}>HOY</span>}
+                </div>
+              );
+            })
+          }
+        </div>
+
+        {/* Mis solicitudes */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Mis solicitudes</span>
+            <div style={{display:'flex',gap:6}}>
+              <button className="btn btn-ghost btn-sm" onClick={()=>setModal('cambio')}>+ Cambio</button>
+              <button className="btn btn-primary btn-sm" onClick={()=>setModal('vacaciones')}>+ Vacaciones</button>
+            </div>
+          </div>
+          {myReqs.length===0
+            ?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No tienes solicitudes recientes.</div>
+            :myReqs.map((r,i)=>(
+              <div key={i} className="op-req-item">
+                <span className="tag" style={{background:r.request_type==='swap'?'var(--blue3)':'var(--green2)',color:r.request_type==='swap'?'var(--blue)':'var(--green)',borderColor:r.request_type==='swap'?'var(--blue2)':'var(--green2)',fontSize:10}}>
+                  {r.request_type==='swap'?'Cambio':'Vacaciones'}
+                </span>
+                <span style={{flex:1,color:'var(--text2)'}}>
+                  {r.request_type==='swap'
+                    ?`${r.requester_date||'?'} ↔ ${r.target_date||'?'}`
+                    :`${r.vacation_start||'?'} – ${r.vacation_end||'?'}`
+                  }
+                </span>
+                <span className={`pill ${r.status==='approved'?'pill-ok':r.status==='rejected'?'pill-bad':'pill-warn'}`} style={{fontSize:10}}>
+                  {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':'Pendiente'}
+                </span>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      {/* Formularios solicitud */}
+      {modal&&(
+        <OpRequestModal modal={modal} userId={user.id} userName={user.full_name} onClose={()=>setModal(null)} onSaved={()=>{
+          setModal(null);
+          sb.from('shift_requests').select('*').eq('requester_id',user.id).order('created_at',{ascending:false}).limit(8).then(({data})=>setMyReqs(data||[]));
+        }}/>
+      )}
+    </div>
+  );
+}
+
+function OpRequestModal({modal,userId,userName,onClose,onSaved}){
+  const [emps,setEmps]=useState([]);
+  const [form,setForm]=useState({date1:'',date2:'',targetId:''});
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{fetchEmployees().then(d=>setEmps(d||[]));},[]);
+  const save=async()=>{
+    setSaving(true);
+    if(modal==='cambio'){
+      if(!form.date1||!form.date2||!form.targetId){alert('Completa todos los campos');setSaving(false);return;}
+      await sb.from('shift_requests').insert({request_type:'swap',requester_id:userId,requester_date:form.date1,target_date:form.date2,target_id:form.targetId,status:'pending'});
+    }else{
+      if(!form.date1||!form.date2){alert('Indica fechas de inicio y fin');setSaving(false);return;}
+      if(form.date2<form.date1){alert('La fecha fin debe ser posterior al inicio');setSaving(false);return;}
+      await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:2026,status:'pending'});
+    }
+    setSaving(false);onSaved();
+  };
+  return(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">{modal==='cambio'?'Solicitar cambio de turno':'Solicitar vacaciones'}</div>
+        <div className="modal-sub">La solicitud quedará pendiente de aprobación</div>
+        {modal==='cambio'?(
+          <>
+            <div className="fg"><label className="fl">Tu día (el que cedes)</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
+            <div className="fg"><label className="fl">Día que quieres trabajar</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
+            <div className="fg"><label className="fl">Con quién cambias</label>
+              <select className="fs" value={form.targetId} onChange={e=>setForm(p=>({...p,targetId:e.target.value}))}>
+                <option value="">Seleccionar compañero...</option>
+                {emps.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
+              </select>
+            </div>
+          </>
+        ):(
+          <>
+            <div className="frow">
+              <div className="fg"><label className="fl">Fecha inicio</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
+              <div className="fg"><label className="fl">Fecha fin</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
+            </div>
+            {form.date1&&form.date2&&form.date2>=form.date1&&(
+              <div className="alert alert-info" style={{fontSize:11,marginBottom:0}}>
+                <span>📅</span><span>{Math.round((new Date(form.date2)-new Date(form.date1))/86400000)+1} día(s) de vacaciones</span>
+              </div>
+            )}
+          </>
+        )}
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={saving} onClick={save}>{saving?'Enviando…':'Enviar solicitud'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PROFILE VIEW ──────────────────────────────────────────────────────────────
+function ProfileView({user,onUserUpdate}){
+  const [photoUrl,setPhotoUrl]=useState(user.photo_url||'');
+  const [oldPass,setOldPass]=useState('');
+  const [newPass,setNewPass]=useState('');
+  const [newPass2,setNewPass2]=useState('');
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState(null); // {type:'ok'|'err', text}
+  const initials=(user.full_name||user.short_name||'??').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+  const savePhoto=async()=>{
+    setSaving(true);setMsg(null);
+    const {error}=await sb.from('employees').update({photo_url:photoUrl||null}).eq('id',user.id);
+    if(error)setMsg({type:'err',text:'Error al guardar la foto: '+error.message});
+    else{setMsg({type:'ok',text:'Foto actualizada correctamente'});onUserUpdate({...user,photo_url:photoUrl||null});}
+    setSaving(false);
+  };
+
+  const changePassword=async()=>{
+    setMsg(null);
+    if(!oldPass||!newPass||!newPass2){setMsg({type:'err',text:'Completa todos los campos'});return;}
+    if(newPass!==newPass2){setMsg({type:'err',text:'Las contraseñas nuevas no coinciden'});return;}
+    if(newPass.length<4){setMsg({type:'err',text:'La contraseña debe tener al menos 4 caracteres'});return;}
+    setSaving(true);
+    const {data:check}=await sb.from('employees').select('id').eq('id',user.id).eq('password',oldPass).maybeSingle();
+    if(!check){setMsg({type:'err',text:'La contraseña actual no es correcta'});setSaving(false);return;}
+    const {error}=await sb.from('employees').update({password:newPass}).eq('id',user.id);
+    if(error)setMsg({type:'err',text:'Error al cambiar contraseña: '+error.message});
+    else{setMsg({type:'ok',text:'Contraseña cambiada correctamente'});setOldPass('');setNewPass('');setNewPass2('');}
+    setSaving(false);
+  };
+
+  return(
+    <div style={{maxWidth:520}}>
+      {msg&&<div className={msg.type==='ok'?'profile-success':'login-err'} style={{marginBottom:16}}>{msg.type==='ok'?'✓':' ⚠'} {msg.text}</div>}
+
+      {/* Foto y datos */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><span className="card-title">Foto de perfil</span></div>
+        <div style={{display:'flex',gap:24,alignItems:'center'}}>
+          <div className="profile-avatar" title="Foto de perfil">
+            {(user.photo_url||photoUrl)
+              ?<img src={photoUrl||user.photo_url} alt="avatar" onError={e=>{e.target.style.display='none';}}/>
+              :initials
+            }
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:500,marginBottom:2}}>{user.full_name}</div>
+            <div style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize',marginBottom:12}}>{user.role} · @{user.username}</div>
+            <div className="fg" style={{marginBottom:8}}><label className="fl">URL de foto</label>
+              <input className="fi" placeholder="https://..." value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)}/>
+            </div>
+            <button className="btn btn-primary btn-sm" disabled={saving} onClick={savePhoto}>Guardar foto</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Cambio de contraseña */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">Cambiar contraseña</span></div>
+        <div className="fg"><label className="fl">Contraseña actual</label>
+          <input className="fi" type="password" placeholder="Tu contraseña actual" value={oldPass} onChange={e=>setOldPass(e.target.value)}/>
+        </div>
+        <div className="fg"><label className="fl">Nueva contraseña</label>
+          <input className="fi" type="password" placeholder="Mínimo 4 caracteres" value={newPass} onChange={e=>setNewPass(e.target.value)}/>
+        </div>
+        <div className="fg"><label className="fl">Repetir nueva contraseña</label>
+          <input className="fi" type="password" placeholder="Repite la nueva contraseña" value={newPass2} onChange={e=>setNewPass2(e.target.value)}/>
+        </div>
+        <button className="btn btn-primary" disabled={saving} onClick={changePassword}>{saving?'Guardando…':'Cambiar contraseña'}</button>
+      </div>
     </div>
   );
 }
@@ -1845,53 +2230,132 @@ function ResumenRRHH(){
 
 // ── APP ────────────────────────────────────────────────────────────────────────
 function App(){
+  // ── Auth state (persiste en localStorage) ─────────────────────────────────
+  const [currentUser,setCurrentUser]=useState(()=>{
+    try{const s=localStorage.getItem('noc_user');return s?JSON.parse(s):null;}catch(e){return null;}
+  });
   const [page,setPage]=useState('today');
   const [adminOpen,setAdminOpen]=useState(true);
-  const P={today:TodayView,calendar:()=><CalendarView isAdmin={true}/>,team:TeamView,requests:RequestsView,admin:AdminView,caln2:CalN2View,rrhh:ResumenRRHH};
+
+  const isAdmin=currentUser&&(currentUser.role==='admin'||currentUser.role==='manager'||currentUser.role==='coordinator');
+  const isOperator=currentUser&&(currentUser.role==='operator'||currentUser.role==='staff');
+
+  // ── Si no hay sesión → pantalla de login ───────────────────────────────────
+  if(!currentUser) return <LoginView onLogin={user=>{
+    setCurrentUser(user);
+    setPage(isAdmin?'today':'opdashboard');
+  }}/>;
+
+  const handleLogout=()=>{
+    try{localStorage.removeItem('noc_user');}catch(e){}
+    setCurrentUser(null);
+    setPage('today');
+  };
+
+  const handleUserUpdate=(updated)=>{
+    setCurrentUser(updated);
+    try{localStorage.setItem('noc_user',JSON.stringify(updated));}catch(e){}
+  };
+
+  // ── Routing pages ──────────────────────────────────────────────────────────
+  const P={
+    today:TodayView,
+    calendar:()=><CalendarView isAdmin={isAdmin}/>,
+    team:TeamView,
+    requests:RequestsView,
+    admin:AdminView,
+    caln2:CalN2View,
+    rrhh:ResumenRRHH,
+    opdashboard:()=><OperatorDashboard user={currentUser}/>,
+    profile:()=><ProfileView user={currentUser} onUserUpdate={handleUserUpdate}/>,
+  };
   const Pg=P[page]||TodayView;
-  const titles={today:'Vista del día',calendar:'Calendario anual',team:'Equipo',requests:'Solicitudes',admin:'Administración',caln2:'Calendario Guardia N2',rrhh:'Resumen RRHH'};
+  const titles={today:'Vista del día',calendar:'Calendario',team:'Equipo',requests:'Solicitudes',admin:'Administración',caln2:'Calendario N2',rrhh:'Resumen RRHH',opdashboard:'Mi Panel',profile:'Mi Perfil'};
   const adminPages=['admin','caln2','rrhh'];
+  const initials=(currentUser.full_name||currentUser.short_name||'??').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
   return(
     <div className="app">
       <div className="sidebar">
         <div className="sidebar-logo"><h1>NOC Turnos</h1><span>Avatel Telecom · 2026</span></div>
         <div className="nav">
-          <div className="nav-section">Principal</div>
-          {['today','calendar','team'].map(k=>(
-            <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
-              <NI n={k==='today'?'today':k==='calendar'?'calendar':'team'}/>{k==='today'?'Hoy':k==='calendar'?'Calendario':'Equipo'}
-            </div>
-          ))}
-          <div className="nav-section">Gestión</div>
-          <div className={`nav-item ${page==='requests'?'active':''}`} onClick={()=>setPage('requests')}><NI n="requests"/>Solicitudes<span className="notif" style={{marginLeft:'auto'}}>3</span></div>
-          <div className={`nav-item ${adminPages.includes(page)?'active':''}`} style={{justifyContent:'space-between'}}
-            onClick={()=>{setAdminOpen(o=>!o);if(!adminPages.includes(page))setPage('admin');}}>
-            <div style={{display:'flex',alignItems:'center',gap:10}}><NI n="admin"/>Administración</div>
-            <span style={{fontSize:9,transition:'transform .2s',display:'inline-block',transform:adminOpen?'rotate(90deg)':'rotate(0deg)'}}>▶</span>
-          </div>
-          {adminOpen&&(
-            <div style={{paddingLeft:12}}>
-              {[{k:'admin',l:'Panel admin'},{k:'caln2',l:'Calendario N2'},{k:'rrhh',l:'Resumen RRHH'}].map(({k,l})=>(
-                <div key={k} className={`nav-item ${page===k?'active':''}`} style={{fontSize:12,padding:'7px 10px'}} onClick={()=>setPage(k)}>
-                  <span style={{width:6,height:6,borderRadius:'50%',background:page===k?'var(--blue)':'var(--text3)',flexShrink:0,marginLeft:4}}/>{l}
+          {isOperator?(
+            <>
+              <div className="nav-section">Mi espacio</div>
+              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'calendar',n:'calendar',l:'Calendario'},{k:'requests',n:'requests',l:'Mis solicitudes'}].map(({k,n,l})=>(
+                <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
+                  <NI n={n}/>{l}{k==='requests'&&<PendingBadge style={{marginLeft:'auto'}}/>}
                 </div>
               ))}
-            </div>
+            </>
+          ):(
+            <>
+              <div className="nav-section">Principal</div>
+              {[{k:'today',n:'today',l:'Hoy'},{k:'calendar',n:'calendar',l:'Calendario'},{k:'team',n:'team',l:'Equipo'}].map(({k,n,l})=>(
+                <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
+                  <NI n={n}/>{l}
+                </div>
+              ))}
+              <div className="nav-section">Gestión</div>
+              <div className={`nav-item ${page==='requests'?'active':''}`} onClick={()=>setPage('requests')}>
+                <NI n="requests"/>Solicitudes<PendingBadge style={{marginLeft:'auto'}}/>
+              </div>
+              <div className={`nav-item ${adminPages.includes(page)?'active':''}`} style={{justifyContent:'space-between'}}
+                onClick={()=>{setAdminOpen(o=>!o);if(!adminPages.includes(page))setPage('admin');}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}><NI n="admin"/>Administración</div>
+                <span style={{fontSize:9,transition:'transform .2s',display:'inline-block',transform:adminOpen?'rotate(90deg)':'rotate(0deg)'}}>▶</span>
+              </div>
+              {adminOpen&&(
+                <div style={{paddingLeft:12}}>
+                  {[{k:'admin',l:'Panel admin'},{k:'caln2',l:'Calendario N2'},{k:'rrhh',l:'Resumen RRHH'}].map(({k,l})=>(
+                    <div key={k} className={`nav-item ${page===k?'active':''}`} style={{fontSize:12,padding:'7px 10px'}} onClick={()=>setPage(k)}>
+                      <span style={{width:6,height:6,borderRadius:'50%',background:page===k?'var(--blue)':'var(--text3)',flexShrink:0,marginLeft:4}}/>{l}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
-        <div className="sidebar-bottom">
-          <div style={{padding:'8px 12px',fontSize:12,color:'var(--text3)'}}>
-            <div style={{marginBottom:3}}>v3.2 — Fix mapping vacaciones</div>
-            <div>{EMPS.length} operadores · 1.624h · 203 jornadas</div>
+
+        {/* Bloque usuario */}
+        <div className="sidebar-user">
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-av">
+              {currentUser.photo_url
+                ?<img src={currentUser.photo_url} alt="" onError={e=>{e.target.style.display='none';}}/>
+                :initials
+              }
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="sidebar-user-name">{currentUser.short_name||currentUser.full_name}</div>
+              <div className="sidebar-user-role">{currentUser.role}</div>
+            </div>
           </div>
+          <div className="sidebar-user-actions">
+            <div className={`nav-item ${page==='profile'?'active':''}`} style={{flex:1,fontSize:11,padding:'5px 8px',margin:0}} onClick={()=>setPage('profile')}>
+              ⚙ Mi perfil
+            </div>
+            <button className="btn btn-ghost" style={{fontSize:11,padding:'5px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)'}} onClick={handleLogout}>
+              ⏻
+            </button>
+          </div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.3 — Login + UI fixes</div>
         </div>
       </div>
+
       <div className="main">
         <div className="topbar">
-          <span className="topbar-title">{titles[page]}</span>
+          <span className="topbar-title">{titles[page]||'NOC Turnos'}</span>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:12,color:'var(--text3)'}}>{new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>
-            <div style={{width:30,height:30,borderRadius:'50%',background:'var(--bg4)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:'pointer'}}>SR</div>
+            <div style={{width:30,height:30,borderRadius:'50%',background:'var(--blue2)',border:'1px solid var(--blue)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'var(--blue)',cursor:'pointer',overflow:'hidden'}}
+              onClick={()=>setPage('profile')}>
+              {currentUser.photo_url
+                ?<img src={currentUser.photo_url} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}} alt="" onError={e=>{e.target.style.display='none';}}/>
+                :initials
+              }
+            </div>
           </div>
         </div>
         <div className="content"><Pg/></div>
