@@ -1848,11 +1848,6 @@ function OperatorDashboard({user}){
         </div>
       </div>
 
-      {/* Vista de hoy */}
-      <div style={{marginBottom:8,fontSize:13,fontWeight:600,color:'var(--text2)',letterSpacing:'.04em',textTransform:'uppercase'}}>Hoy</div>
-      <TodayView/>
-      <div style={{height:16}}/>
-
       {/* Resumen del mes */}
       <div className="card" style={{marginBottom:16,padding:0,overflow:'hidden'}}>
         <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:12}}>
@@ -2548,7 +2543,7 @@ function App(){
           {isOperator?(
             <>
               <div className="nav-section">Mi espacio</div>
-              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
+              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'today',n:'today',l:'Hoy'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
                 <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
                   <NI n={n}/>{l}
                 </div>
@@ -2563,9 +2558,6 @@ function App(){
                 </div>
               ))}
               <div className="nav-section">Gestión</div>
-              <div className={`nav-item ${page==='requests'?'active':''}`} onClick={()=>setPage('requests')}>
-                <NI n="requests"/>Solicitudes<PendingBadge style={{marginLeft:'auto'}}/>
-              </div>
               <div className={`nav-item ${adminPages.includes(page)?'active':''}`} style={{justifyContent:'space-between'}}
                 onClick={()=>{setAdminOpen(o=>!o);if(!adminPages.includes(page))setPage('admin');}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}><NI n="admin"/>Administración</div>
