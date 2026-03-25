@@ -521,7 +521,7 @@ async function createShiftRequest(req) {
 
 async function fetchPendingRequests() {
   const { data } = await sb.from('shift_requests')
-    .select('id, request_type, status, created_at, requester_date, target_date, vacation_start, vacation_end, requester:requester_id(id, full_name, short_name), target:target_id(id, full_name, short_name)')
+    .select('id, request_type, status, created_at, requester_date, target_date, vacation_start, vacation_end, notes, requester:requester_id(id, full_name, short_name), target:target_id(id, full_name, short_name)')
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   return data || [];
@@ -637,9 +637,24 @@ function TodayView(){
       <div className="grid-2">
         <div className="card">
           <div className="card-header"><span className="card-title">Cobertura del turno</span></div>
-          {[['M',w.M.length,mr.M],['T',w.T.length,mr.T],['N',w.N.length,mr.N]].map(([l,v,m])=>{
-            const c=v>=m?'cov-ok':v>=m-1?'cov-warn':'cov-bad';
-            return(<div key={l} className="cov-row"><span className="cov-label"><Bdg s={l}/></span><div className="cov-bar"><div className={`cov-fill ${c}`} style={{width:`${Math.min(v/8*100,100)}%`}}/></div><span className="cov-count">{v}/{m}+</span></div>);
+          {[{k:'M',l:'Mañana',v:w.M.length,m:mr.M},{k:'T',l:'Tarde',v:w.T.length,m:mr.T},{k:'N',l:'Noche',v:w.N.length,m:mr.N}].map(({k,l,v,m})=>{
+            const ok=v>=m,warn=v===m-1;
+            const color=ok?'var(--green)':warn?'var(--amber)':'var(--red)';
+            const pct=m>0?Math.min((v/m)*100,100):100;
+            return(
+              <div key={k} style={{marginBottom:14}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                  <Bdg s={k}/>
+                  <span style={{fontSize:12,flex:1,color:'var(--text2)'}}>{l}</span>
+                  <span style={{fontSize:13,fontWeight:700,color}}>{v}</span>
+                  <span style={{fontSize:11,color:'var(--text3)'}}>/ {m} mín.</span>
+                  <span style={{fontSize:13}}>{ok?'✓':'⚠'}</span>
+                </div>
+                <div style={{height:5,borderRadius:3,background:'var(--bg4)'}}>
+                  <div style={{height:'100%',borderRadius:3,background:color,width:`${pct}%`,transition:'width .4s'}}/>
+                </div>
+              </div>
+            );
           })}
         </div>
         <div className="card">
@@ -1063,7 +1078,8 @@ function RequestsView(){
         vacation_start: r.vacation_start,
         vacation_end: r.vacation_end,
         target_name: r.target?.full_name,
-        target_id: r.target?.id
+        target_id: r.target?.id,
+        notes: r.notes
       }));
       setReqs(mapped);
       setReqLoading(false);
@@ -1090,6 +1106,7 @@ function RequestsView(){
               <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
             </div>
             <div className="req-desc">{r.desc}</div>
+            {r.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:3,fontStyle:'italic'}}>💬 {r.notes}</div>}
           </div>
           <div className="req-actions">
                           <button className="btn btn-ok btn-sm" onClick={()=>handleApprove(r.id)}>✓ Aprobar</button>
@@ -1272,6 +1289,7 @@ function HistorialView(){
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Operador</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Tipo</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Detalle</th>
+                  <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Motivo</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Estado</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Aprobador</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Fecha</th>
@@ -1294,6 +1312,7 @@ function HistorialView(){
                           ?`${h.vacation_start} – ${h.vacation_end} (${h.vacation_days||'?'}d)`
                           :'–')}
                     </td>
+                    <td style={{padding:'6px 8px',color:'var(--text3)',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11,fontStyle:'italic'}} title={h.requester_notes||''}>{h.requester_notes||'–'}</td>
                     <td style={{padding:'6px 8px'}}>
                       <span style={{color:STATUS_COLOR[h.status]||'var(--text2)',fontWeight:600}}>{STATUS_LABEL[h.status]||h.status}</span>
                     </td>
@@ -1350,7 +1369,8 @@ function AdminView(){
         requester_date:r.requester_date,
         target_date:r.target_date,
         vacation_start:r.vacation_start,
-        vacation_end:r.vacation_end
+        vacation_end:r.vacation_end,
+        notes:r.notes
       }));
       setAdminReqs(mapped);
       setAdminReqsLoading(false);
@@ -1519,6 +1539,7 @@ function AdminView(){
                 <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
               </div>
               <div className="req-desc">{r.desc}</div>
+              {r.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:3,fontStyle:'italic'}}>💬 {r.notes}</div>}
             </div>
             <div className="req-actions">
               <button className="btn btn-ok btn-sm" onClick={async()=>{
@@ -1785,50 +1806,52 @@ function OperatorDashboard({user}){
 
   const reqLabel=t=>t==='swap'?{l:'Cambio',bg:'var(--blue3)',c:'var(--blue)'}:t==='personal_day'?{l:'Asuntos propios',bg:'var(--orange3)',c:'var(--orange)'}:{l:'Vacaciones',bg:'var(--green2)',c:'var(--green)'};
 
+  const vacColor=myBalance?(myBalance.days_remaining>=10?'var(--green)':myBalance.days_remaining>=5?'var(--amber)':'var(--red)'):'var(--text3)';
   return(
     <div>
-      {/* Stats principales */}
-      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:12,marginBottom:12}}>
-        <div className="stat">
-          <div className="stat-label">Horas anuales</div>
-          <div style={{display:'flex',alignItems:'baseline',gap:6}}>
-            <div className="stat-val" style={{color:'var(--amber)'}}>{stats.horas}h</div>
-            <div style={{fontSize:12,color:'var(--text3)'}}>/ {HMAX}h</div>
+      {/* Resumen anual — tarjeta unificada */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><span className="card-title">Resumen anual 2026</span></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:5}}>
+              <span style={{color:'var(--text3)'}}>Horas trabajadas</span>
+              <span><span style={{fontWeight:700,color:'var(--amber)'}}>{stats.horas}h</span><span style={{color:'var(--text3)'}}> / {HMAX}h</span></span>
+            </div>
+            <div style={{height:5,borderRadius:3,background:'var(--bg4)'}}>
+              <div style={{height:'100%',borderRadius:3,background:'var(--amber)',width:`${Math.min(100,(stats.horas/HMAX)*100).toFixed(1)}%`,transition:'width .4s'}}/>
+            </div>
           </div>
-          <div style={{marginTop:10,height:3,borderRadius:2,background:'var(--bg4)'}}>
-            <div style={{height:'100%',borderRadius:2,background:'var(--amber)',width:`${Math.min(100,(stats.horas/HMAX)*100).toFixed(1)}%`,transition:'width .4s'}}/>
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:5}}>
+              <span style={{color:'var(--text3)'}}>Jornadas</span>
+              <span><span style={{fontWeight:700}}>{stats.jornadas}</span><span style={{color:'var(--text3)'}}> / {JMAX}</span></span>
+            </div>
+            <div style={{height:5,borderRadius:3,background:'var(--bg4)'}}>
+              <div style={{height:'100%',borderRadius:3,background:'var(--blue)',width:`${Math.min(100,(stats.jornadas/JMAX)*100).toFixed(1)}%`,transition:'width .4s'}}/>
+            </div>
           </div>
         </div>
-        <div className="stat">
-          <div className="stat-label">Jornadas</div>
-          <div className="stat-val">{stats.jornadas}</div>
-          <div className="stat-sub">objetivo: {JMAX}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Vacaciones restantes</div>
-          <div className="stat-val" style={{color:myBalance?(myBalance.days_remaining>=10?'var(--green)':myBalance.days_remaining>=5?'var(--amber)':'var(--red)'):'var(--text3)'}}>{myBalance?.days_remaining??'–'}</div>
-          <div className="stat-sub">{myBalance?`de ${myBalance.days_total} días`:''}</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          {[{k:'M',v:stats.m,c:'#7eb8f7',l:'Mañanas'},{k:'T',v:stats.t,c:'var(--amber)',l:'Tardes'},{k:'N',v:stats.n,c:'#c084fc',l:'Noches'},{k:'D',v:stats.d,c:'var(--orange)',l:'Dispon.'}].map(({k,v,c,l})=>(
+            <div key={k} style={{display:'flex',alignItems:'center',gap:7,padding:'7px 12px',background:'var(--bg3)',borderRadius:8,border:'1px solid var(--border)'}}>
+              <Bdg s={k}/>
+              <span style={{fontSize:17,fontWeight:700,color:c,lineHeight:1}}>{v}</span>
+              <span style={{fontSize:10,color:'var(--text3)'}}>{l}</span>
+            </div>
+          ))}
+          <div style={{marginLeft:'auto',padding:'7px 14px',background:'var(--bg3)',borderRadius:8,border:'1px solid var(--border)',textAlign:'center'}}>
+            <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>Vacaciones restantes</div>
+            <div style={{fontSize:22,fontWeight:700,color:vacColor,lineHeight:1}}>{myBalance?.days_remaining??'–'}</div>
+            <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>de {myBalance?.days_total??'–'} días</div>
+          </div>
         </div>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
-        <div className="stat">
-          <div className="stat-label">Mañanas</div>
-          <div className="stat-val" style={{fontSize:22,color:'#7eb8f7'}}>{stats.m}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Tardes</div>
-          <div className="stat-val" style={{fontSize:22,color:'var(--amber)'}}>{stats.t}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Noches</div>
-          <div className="stat-val" style={{fontSize:22,color:'#c084fc'}}>{stats.n}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Disponibilidades</div>
-          <div className="stat-val" style={{fontSize:22,color:'var(--orange)'}}>{stats.d}</div>
-          <div className="stat-sub">horas extras</div>
-        </div>
-      </div>
+
+      {/* Vista de hoy */}
+      <div style={{marginBottom:8,fontSize:13,fontWeight:600,color:'var(--text2)',letterSpacing:'.04em',textTransform:'uppercase'}}>Hoy</div>
+      <TodayView/>
+      <div style={{height:16}}/>
 
       {/* Resumen del mes */}
       <div className="card" style={{marginBottom:16,padding:0,overflow:'hidden'}}>
@@ -1927,7 +1950,7 @@ function OperatorDashboard({user}){
 
 function OpRequestModal({modal,userId,userName,onClose,onSaved}){
   const [emps,setEmps]=useState([]);
-  const [form,setForm]=useState({date1:'',date2:'',targetId:''});
+  const [form,setForm]=useState({date1:'',date2:'',targetId:'',reason:''});
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState('');
   useEffect(()=>{fetchEmployees().then(d=>setEmps(d||[]));},[]);
@@ -1951,18 +1974,18 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
     setErr('');setSaving(true);
     if(modal==='cambio'){
       if(!form.date1||!form.date2||!form.targetId){setErr('Completa todos los campos');setSaving(false);return;}
-      await sb.from('shift_requests').insert({request_type:'swap',requester_id:userId,requester_date:form.date1,target_date:form.date2,target_id:form.targetId,status:'pending'});
+      await sb.from('shift_requests').insert({request_type:'swap',requester_id:userId,requester_date:form.date1,target_date:form.date2,target_id:form.targetId,status:'pending',notes:form.reason||null});
     }else if(modal==='asuntos'){
       const valErr=validateAsuntos(form.date1);
       if(!form.date1){setErr('Selecciona una fecha');setSaving(false);return;}
       if(valErr){setErr(valErr);setSaving(false);return;}
       const {data:existing}=await sb.from('shift_requests').select('id').eq('requester_id',userId).eq('request_type','personal_day').in('status',['pending','approved']).limit(1);
       if(existing&&existing.length>0){setErr('Ya tienes una solicitud de asuntos propios este año (solo se permite 1)');setSaving(false);return;}
-      await sb.from('shift_requests').insert({request_type:'personal_day',requester_id:userId,requester_date:form.date1,status:'pending'});
+      await sb.from('shift_requests').insert({request_type:'personal_day',requester_id:userId,requester_date:form.date1,status:'pending',notes:form.reason||null});
     }else{
       if(!form.date1||!form.date2){setErr('Indica fechas de inicio y fin');setSaving(false);return;}
       if(form.date2<form.date1){setErr('La fecha fin debe ser posterior al inicio');setSaving(false);return;}
-      await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:2026,status:'pending'});
+      await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:2026,status:'pending',notes:form.reason||null});
     }
     setSaving(false);onSaved();
   };
@@ -2019,6 +2042,12 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
             )}
           </>
         )}
+        <div className="fg" style={{marginTop:10}}>
+          <label className="fl">Motivo de la solicitud</label>
+          <textarea className="fi" placeholder="Indica el motivo de tu solicitud (opcional)..." rows={3}
+            style={{resize:'vertical',minHeight:60,fontFamily:'inherit',lineHeight:1.4}}
+            value={form.reason} onChange={e=>setForm(p=>({...p,reason:e.target.value}))}/>
+        </div>
         <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" disabled={saving} onClick={save}>{saving?'Enviando…':'Enviar solicitud'}</button>
@@ -2031,6 +2060,8 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
 // ── PROFILE VIEW ──────────────────────────────────────────────────────────────
 function ProfileView({user,onUserUpdate}){
   const [photoUrl,setPhotoUrl]=useState(user.photo_url||'');
+  const [dni,setDni]=useState(user.dni||'');
+  const [email,setEmail]=useState(user.email||'');
   const [oldPass,setOldPass]=useState('');
   const [newPass,setNewPass]=useState('');
   const [newPass2,setNewPass2]=useState('');
@@ -2038,11 +2069,21 @@ function ProfileView({user,onUserUpdate}){
   const [msg,setMsg]=useState(null); // {type:'ok'|'err', text}
   const initials=(user.full_name||user.short_name||'??').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
 
-  const savePhoto=async()=>{
+  useEffect(()=>{
+    sb.from('employees').select('dni,email,photo_url').eq('id',user.id).maybeSingle().then(({data})=>{
+      if(data){
+        if(data.dni!=null)setDni(data.dni||'');
+        if(data.email!=null)setEmail(data.email||'');
+        if(data.photo_url!=null)setPhotoUrl(data.photo_url||'');
+      }
+    });
+  },[user.id]);
+
+  const savePersonalData=async()=>{
     setSaving(true);setMsg(null);
-    const {error}=await sb.from('employees').update({photo_url:photoUrl||null}).eq('id',user.id);
-    if(error)setMsg({type:'err',text:'Error al guardar la foto: '+error.message});
-    else{setMsg({type:'ok',text:'Foto actualizada correctamente'});onUserUpdate({...user,photo_url:photoUrl||null});}
+    const {error}=await sb.from('employees').update({photo_url:photoUrl||null,dni:dni||null,email:email||null}).eq('id',user.id);
+    if(error)setMsg({type:'err',text:'Error al guardar: '+error.message});
+    else{setMsg({type:'ok',text:'Datos actualizados correctamente'});onUserUpdate({...user,photo_url:photoUrl||null,dni:dni||null,email:email||null});}
     setSaving(false);
   };
 
@@ -2064,25 +2105,33 @@ function ProfileView({user,onUserUpdate}){
     <div style={{maxWidth:520}}>
       {msg&&<div className={msg.type==='ok'?'profile-success':'login-err'} style={{marginBottom:16}}>{msg.type==='ok'?'✓':' ⚠'} {msg.text}</div>}
 
-      {/* Foto y datos */}
+      {/* Datos personales + foto */}
       <div className="card" style={{marginBottom:16}}>
-        <div className="card-header"><span className="card-title">Foto de perfil</span></div>
-        <div style={{display:'flex',gap:24,alignItems:'center'}}>
-          <div className="profile-avatar" title="Foto de perfil">
-            {(user.photo_url||photoUrl)
-              ?<img src={photoUrl||user.photo_url} alt="avatar" onError={e=>{e.target.style.display='none';}}/>
+        <div className="card-header"><span className="card-title">Datos personales</span></div>
+        <div style={{display:'flex',gap:24,alignItems:'flex-start',marginBottom:16}}>
+          <div className="profile-avatar" title="Foto de perfil" style={{flexShrink:0}}>
+            {photoUrl
+              ?<img src={photoUrl} alt="avatar" onError={e=>{e.target.style.display='none';}}/>
               :initials
             }
           </div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:13,fontWeight:500,marginBottom:2}}>{user.full_name}</div>
-            <div style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize',marginBottom:12}}>{user.role} · @{user.username}</div>
-            <div className="fg" style={{marginBottom:8}}><label className="fl">URL de foto</label>
-              <input className="fi" placeholder="https://..." value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)}/>
-            </div>
-            <button className="btn btn-primary btn-sm" disabled={saving} onClick={savePhoto}>Guardar foto</button>
+          <div>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:2}}>{user.full_name}</div>
+            <div style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize'}}>{user.role} · @{user.username}</div>
           </div>
         </div>
+        <div className="frow">
+          <div className="fg"><label className="fl">DNI / NIF</label>
+            <input className="fi" placeholder="12345678A" value={dni} onChange={e=>setDni(e.target.value)}/>
+          </div>
+          <div className="fg"><label className="fl">Correo electrónico</label>
+            <input className="fi" type="email" placeholder="nombre@avatel.es" value={email} onChange={e=>setEmail(e.target.value)}/>
+          </div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}><label className="fl">URL de foto de perfil</label>
+          <input className="fi" placeholder="https://..." value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)}/>
+        </div>
+        <button className="btn btn-primary btn-sm" disabled={saving} onClick={savePersonalData}>{saving?'Guardando…':'Guardar datos'}</button>
       </div>
 
       {/* Cambio de contraseña */}
