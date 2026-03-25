@@ -2622,9 +2622,6 @@ function App(){
                 </div>
               ))}
               <div className="nav-section">Gestión</div>
-              <div className={`nav-item ${page==='requests'?'active':''}`} onClick={()=>setPage('requests')}>
-                <NI n="requests"/>Solicitudes<PendingBadge style={{marginLeft:'auto'}}/>
-              </div>
               <div className={`nav-item ${adminPages.includes(page)?'active':''}`} style={{justifyContent:'space-between'}}
                 onClick={()=>{setAdminOpen(o=>!o);if(!adminPages.includes(page))setPage('admin');}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}><NI n="admin"/>Administración</div>
