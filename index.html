@@ -1291,7 +1291,7 @@ function AdminView(){
   const cancelEdit=()=>{setEditRules(false);setDraftRules(null);};
   const saveEdit=async()=>{
     setRuleSaving(true);
-    for(const r of draftRules){await saveCoverageRule({id:r.id,label:r.label,weekday_value:r.weekday_value??r.weekday,weekend_value:r.weekend_value??r.weekend,unit:r.unit,sort_order:r.sort_order||0});}
+    for(const r of draftRules){await saveCoverageRule({id:r.id,label:r.label,weekday_value:r.weekday_value,weekend_value:r.weekend_value,unit:r.unit,sort_order:r.sort_order||0});}
     const fresh=await fetchCoverageRules();
     if(fresh.length>0)setRules(fresh);
     setEditRules(false);setDraftRules(null);setRuleSaving(false);
@@ -1384,12 +1384,12 @@ function AdminView(){
                 :<span style={{fontSize:13}}>{rule.label}</span>
               }
               {editRules
-                ?<input type="number" className="rule-num" value={rule.weekday_value??rule.weekday??''} onChange={e=>updateDraft(rule.id,'weekday',e.target.value===''?null:Number(e.target.value))} placeholder="–"/>
-                :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{rule.weekday_value??rule.weekday??'–'} <span style={{fontSize:10,color:'var(--text3)'}}>{rule.unit}</span></span>
+                ?<input type="number" className="rule-num" value={rule.weekday_value??''} onChange={e=>updateDraft(rule.id,'weekday_value',e.target.value===''?null:Number(e.target.value))} placeholder="–"/>
+                :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{rule.weekday_value??'–'} <span style={{fontSize:10,color:'var(--text3)'}}>{rule.unit}</span></span>
               }
               {editRules
-                ?<input type="number" className="rule-num" value={rule.weekend_value??rule.weekend??''} onChange={e=>updateDraft(rule.id,'weekend',e.target.value===''?null:Number(e.target.value))} placeholder="–"/>
-                :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{(rule.weekend_value??rule.weekend)!=null?(rule.weekend_value??rule.weekend):'–'}</span>
+                ?<input type="number" className="rule-num" value={rule.weekend_value??''} onChange={e=>updateDraft(rule.id,'weekend_value',e.target.value===''?null:Number(e.target.value))} placeholder="–"/>
+                :<span style={{fontFamily:'var(--mono)',fontSize:13,textAlign:'center',display:'block',color:'var(--text)'}}>{rule.weekend_value!=null?rule.weekend_value:'–'}</span>
               }
               {editRules
                 ?<button className="btn btn-danger btn-sm" style={{padding:'3px 8px',fontSize:11}} onClick={()=>handleDeleteRule(rule.id)}>✕</button>
