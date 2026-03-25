@@ -671,7 +671,7 @@ function CalendarView({isAdmin=true}){
   // Merge: dbShifts override static SD for loaded months
   const md = {...(SD[mk]||{}),...dbShifts};
   const di=useMemo(()=>Array.from({length:days},(_,i)=>({we:isWE(mi,i+1),fe:isFest(mi,i+1),to:isTod(mi,i+1),dow:new Date(2026,mi,i+1).getDay()})),[mi,days]);
-  const cov=useMemo(()=>Array.from({length:days},(_,i)=>{let m=0,t=0,n=0;EMPS.forEach(e=>{const s=(md[e]||[])[i];if(s==='M')m++;if(s==='T')t++;if(s==='N')n++;});return{m,t,n};}),[mi,md,days]);
+  const cov=useMemo(()=>Array.from({length:days},(_,i)=>{let m=0,t=0,n=0;EMPS.forEach(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[i];if(s==='M')m++;if(s==='T')t++;if(s==='N')n++;});return{m,t,n};}),[mi,md,days]);
 
   const thcls=info=>{if(info.fe)return 'th-festivo';if(info.to)return 'th-today';if(info.we)return 'th-weekend';return '';};
   const tdcls=info=>{if(info.fe)return 'td-festivo';if(info.to)return 'td-today';if(info.we)return 'td-weekend';return '';};
