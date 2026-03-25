@@ -68,6 +68,7 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .badge-B{background:#3d1a1a;color:#f75f5f}
 .badge-D{background:var(--orange3);color:var(--orange)}
 .badge-O{background:#2d2a1a;color:#fbbf24}
+.badge-A{background:#2a1a3a;color:#e879f9}
 .badge-empty{background:transparent;color:var(--text3)}
 /* Calendar */
 .cal-wrapper{overflow-x:auto}
@@ -1025,6 +1026,11 @@ function RequestsView(){
       [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
       console.log('[handleApprove swap] DONE');
+    } else if(r.type==='asuntos' && empId && r.requester_date){
+      await sb.from('shifts').upsert({employee_id:empId,shift_date:r.requester_date,shift_type:'A'},{onConflict:'employee_id,shift_date'});
+      delete shiftsCache[r.requester_date.substring(0,7)];
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+      console.log('[handleApprove asuntos] DONE');
     } else {
       console.warn('[handleApprove] condición no cumplida: type='+r.type+' empId='+empId+' vacStart='+r.vacation_start+' vacEnd='+r.vacation_end);
     }
@@ -1042,11 +1048,13 @@ function RequestsView(){
     fetchPendingRequests().then(data=>{
       const mapped = data.map(r=>({
         id: r.id,
-        type: r.request_type==='swap'?'cambio':'vacaciones',
+        type: r.request_type==='swap'?'cambio':r.request_type==='personal_day'?'asuntos':'vacaciones',
         name: r.requester?.full_name||'–',
         av: (r.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
         desc: r.request_type==='swap'
           ? `Cambio ${r.requester_date||'?'} → ${r.target_date||'?'}`
+          : r.request_type==='personal_day'
+          ? `Asuntos propios ${r.requester_date||'?'}`
           : `Vacaciones ${r.vacation_start||'?'} – ${r.vacation_end||'?'}`,
         date: new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
         requester_id: r.requester?.id,
@@ -1273,11 +1281,13 @@ function AdminView(){
     fetchPendingRequests().then(data=>{
       const mapped=data.map(r=>({
         id:r.id,
-        type:r.request_type==='swap'?'cambio':'vacaciones',
+        type:r.request_type==='swap'?'cambio':r.request_type==='personal_day'?'asuntos':'vacaciones',
         name:r.requester?.full_name||'–',
         av:(r.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
         desc:r.request_type==='swap'
           ?`Cambio ${r.requester_date||'?'} → ${r.target_date||'?'} con ${r.target?.full_name||'?'}`
+          :r.request_type==='personal_day'
+          ?`Asuntos propios ${r.requester_date||'?'}`
           :`Vacaciones ${r.vacation_start||'?'} – ${r.vacation_end||'?'}`,
         date:new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
         requester_id:r.requester?.id,
@@ -1451,7 +1461,7 @@ function AdminView(){
             <div className="req-info">
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
                 <span className="req-name">{r.name}</span>
-                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':'var(--green)',borderColor:r.type==='cambio'?'var(--blue2)':'var(--green2)'}}>{r.type==='cambio'?'Cambio turno':'Vacaciones'}</span>
+                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':r.type==='asuntos'?'var(--orange3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':r.type==='asuntos'?'var(--orange)':'var(--green)',borderColor:'transparent'}}>{r.type==='cambio'?'Cambio turno':r.type==='asuntos'?'Asuntos propios':'Vacaciones'}</span>
                 <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
               </div>
               <div className="req-desc">{r.desc}</div>
@@ -1477,6 +1487,10 @@ function AdminView(){
                   if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
                   if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
                   [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
+                  window.__calendarVersion=(window.__calendarVersion||0)+1;
+                }else if(r.type==='asuntos'&&empId&&r.requester_date){
+                  await sb.from('shifts').upsert({employee_id:empId,shift_date:r.requester_date,shift_type:'A'},{onConflict:'employee_id,shift_date'});
+                  delete shiftsCache[r.requester_date.substring(0,7)];
                   window.__calendarVersion=(window.__calendarVersion||0)+1;
                 }
                 await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
@@ -1657,119 +1671,200 @@ function PendingBadge({style}){
 
 // ── OPERATOR DASHBOARD ────────────────────────────────────────────────────────
 function OperatorDashboard({user}){
-  const [myShifts,setMyShifts]=useState([]);
+  const todayStr=new Date().toISOString().split('T')[0];
+  const curMonthIdx=new Date().getMonth();
+  const [selMonth,setSelMonth]=useState(curMonthIdx);
+  const [monthData,setMonthData]=useState({});
+  const [allShifts,setAllShifts]=useState([]);
   const [myBalance,setMyBalance]=useState(null);
   const [myReqs,setMyReqs]=useState([]);
   const [loading,setLoading]=useState(true);
   const [modal,setModal]=useState(null);
 
   useEffect(()=>{
-    async function load(){
-      const today=new Date().toISOString().split('T')[0];
-      const in14=new Date(Date.now()+14*86400000).toISOString().split('T')[0];
+    async function loadYear(){
       const [{data:shifts},{data:reqs}]=await Promise.all([
-        sb.from('shifts').select('shift_date,shift_type').eq('employee_id',user.id).gte('shift_date',today).lte('shift_date',in14).order('shift_date'),
-        sb.from('shift_requests').select('*').eq('requester_id',user.id).order('created_at',{ascending:false}).limit(8)
+        sb.from('shifts').select('shift_date,shift_type').eq('employee_id',user.id)
+          .gte('shift_date','2026-01-01').lte('shift_date','2026-12-31').order('shift_date'),
+        sb.from('shift_requests').select('*').eq('requester_id',user.id)
+          .order('created_at',{ascending:false}).limit(20)
       ]);
-      setMyShifts(shifts||[]);
+      setAllShifts(shifts||[]);
       setMyReqs(reqs||[]);
       const bal=await fetchVacationBalance(user.id);
       setMyBalance(bal);
       setLoading(false);
     }
-    load();
+    loadYear();
   },[user.id]);
 
-  const nextShifts=myShifts.slice(0,5);
+  useEffect(()=>{
+    fetchShiftsForMonth(selMonth).then(data=>setMonthData(data));
+  },[selMonth]);
+
+  const userShifts=useMemo(()=>{
+    const sn=user.short_name;
+    return monthData[sn]||Array(MD[selMonth]).fill('');
+  },[monthData,user.short_name,selMonth]);
+
+  const stats=useMemo(()=>{
+    let m=0,t=0,n=0,d=0,a=0;
+    allShifts.forEach(s=>{
+      if(s.shift_type==='M')m++;
+      else if(s.shift_type==='T')t++;
+      else if(s.shift_type==='N')n++;
+      else if(s.shift_type==='D')d++;
+      else if(s.shift_type==='A')a++;
+    });
+    return{m,t,n,d,a,jornadas:m+t+n+a,horas:(m+t+n+a)*8};
+  },[allShifts]);
+
   const pending=myReqs.filter(r=>r.status==='pending');
-  const approved=myReqs.filter(r=>r.status==='approved');
-  const initials=(user.full_name||user.short_name||'??').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  const days=MD[selMonth];
+  const di=useMemo(()=>Array.from({length:days},(_,i)=>({
+    we:isWE(selMonth,i+1),fe:isFest(selMonth,i+1),
+    to:`2026-${String(selMonth+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`===todayStr,
+    dow:new Date(2026,selMonth,i+1).getDay()
+  })),[selMonth,days]);
 
   if(loading)return <div style={{padding:40,textAlign:'center',color:'var(--text3)'}}>Cargando tu panel...</div>;
 
+  const reqLabel=t=>t==='swap'?{l:'Cambio',bg:'var(--blue3)',c:'var(--blue)'}:t==='personal_day'?{l:'Asuntos propios',bg:'var(--orange3)',c:'var(--orange)'}:{l:'Vacaciones',bg:'var(--green2)',c:'var(--green)'};
+
   return(
     <div>
-      {/* Cabecera personal */}
-      <div className="card" style={{marginBottom:16,display:'flex',alignItems:'center',gap:20,padding:'20px 24px'}}>
-        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--blue2)',border:'2px solid var(--blue)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'var(--blue)',overflow:'hidden',flexShrink:0}}>
-          {user.photo_url?<img src={user.photo_url} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}} alt=""/>:initials}
-        </div>
-        <div>
-          <div style={{fontSize:18,fontWeight:600,marginBottom:2}}>{user.full_name||user.short_name}</div>
-          <div style={{fontSize:12,color:'var(--text3)',textTransform:'capitalize'}}>{user.role} · NOC Avatel</div>
-        </div>
-        <div style={{marginLeft:'auto',display:'flex',gap:12}}>
-          <div className="stat" style={{textAlign:'center',padding:'12px 20px',minWidth:90}}>
-            <div className="stat-label">Vacaciones</div>
-            <div className="stat-val" style={{fontSize:22,color:myBalance?(myBalance.days_remaining>=10?'var(--green)':myBalance.days_remaining>=5?'var(--amber)':'var(--red)'):'var(--text3)'}}>{myBalance?.days_remaining??'–'}</div>
-            <div className="stat-sub">{myBalance?`de ${myBalance.days_total} días`:''}</div>
+      {/* Stats principales */}
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:12,marginBottom:12}}>
+        <div className="stat">
+          <div className="stat-label">Horas anuales</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+            <div className="stat-val" style={{color:'var(--amber)'}}>{stats.horas}h</div>
+            <div style={{fontSize:12,color:'var(--text3)'}}>/ {HMAX}h</div>
           </div>
-          <div className="stat" style={{textAlign:'center',padding:'12px 20px',minWidth:90}}>
-            <div className="stat-label">Pendientes</div>
-            <div className="stat-val" style={{fontSize:22,color:pending.length>0?'var(--amber)':'var(--text3)'}}>{pending.length}</div>
-            <div className="stat-sub">solicitudes</div>
+          <div style={{marginTop:10,height:3,borderRadius:2,background:'var(--bg4)'}}>
+            <div style={{height:'100%',borderRadius:2,background:'var(--amber)',width:`${Math.min(100,(stats.horas/HMAX)*100).toFixed(1)}%`,transition:'width .4s'}}/>
           </div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Jornadas</div>
+          <div className="stat-val">{stats.jornadas}</div>
+          <div className="stat-sub">objetivo: {JMAX}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Vacaciones restantes</div>
+          <div className="stat-val" style={{color:myBalance?(myBalance.days_remaining>=10?'var(--green)':myBalance.days_remaining>=5?'var(--amber)':'var(--red)'):'var(--text3)'}}>{myBalance?.days_remaining??'–'}</div>
+          <div className="stat-sub">{myBalance?`de ${myBalance.days_total} días`:''}</div>
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
+        <div className="stat">
+          <div className="stat-label">Mañanas</div>
+          <div className="stat-val" style={{fontSize:22,color:'#7eb8f7'}}>{stats.m}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Tardes</div>
+          <div className="stat-val" style={{fontSize:22,color:'var(--amber)'}}>{stats.t}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Noches</div>
+          <div className="stat-val" style={{fontSize:22,color:'#c084fc'}}>{stats.n}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Disponibilidades</div>
+          <div className="stat-val" style={{fontSize:22,color:'var(--orange)'}}>{stats.d}</div>
+          <div className="stat-sub">horas extras</div>
         </div>
       </div>
 
-      <div className="grid-2" style={{marginBottom:16}}>
-        {/* Próximos turnos */}
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Próximos turnos (14 días)</span>
+      {/* Resumen del mes */}
+      <div className="card" style={{marginBottom:16,padding:0,overflow:'hidden'}}>
+        <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:12}}>
+          <span className="card-title" style={{margin:0}}>Resumen del mes</span>
+          <div className="month-nav" style={{marginLeft:'auto'}}>
+            <button className="mnb" onClick={()=>setSelMonth(m=>(m+11)%12)}>‹</button>
+            <span className="mt" style={{minWidth:110,fontSize:13}}>{MN[selMonth]} 2026</span>
+            <button className="mnb" onClick={()=>setSelMonth(m=>(m+1)%12)}>›</button>
           </div>
-          {nextShifts.length===0
-            ?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay turnos asignados en los próximos 14 días.</div>
-            :nextShifts.map((s,i)=>{
-              const d=new Date(s.shift_date+'T00:00:00');
-              const isToday=s.shift_date===new Date().toISOString().split('T')[0];
-              return(
-                <div key={i} className="op-shift-item">
-                  <span className={`badge badge-${s.shift_type}`}>{s.shift_type}</span>
-                  <span style={{flex:1,fontSize:13}}>{d.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})}</span>
-                  {isToday&&<span className="pill pill-blue" style={{fontSize:10}}>HOY</span>}
-                </div>
-              );
-            })
-          }
         </div>
+        <div style={{overflowX:'auto',padding:'10px 8px'}}>
+          <table style={{borderCollapse:'separate',borderSpacing:0,width:'100%'}}>
+            <thead>
+              <tr>
+                <td style={{padding:'3px 12px',fontSize:11,color:'var(--text3)',whiteSpace:'nowrap',minWidth:120,fontWeight:500}}>{user.short_name||user.full_name}</td>
+                {di.map((info,i)=>(
+                  <th key={i} style={{
+                    fontSize:9,fontWeight:500,padding:'3px 2px',textAlign:'center',minWidth:28,
+                    color:info.fe?'var(--amber)':info.to?'var(--blue)':info.we?'#7eb8f7':'var(--text3)',
+                    background:info.fe?'rgba(247,184,79,.08)':info.to?'rgba(79,142,247,.12)':info.we?'rgba(79,142,247,.05)':'transparent',
+                    borderBottom:'1px solid var(--border)'
+                  }}>
+                    <div>{i+1}</div>
+                    <div style={{opacity:.7}}>{DN[info.dow]}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{padding:'4px 12px',fontSize:11,color:'var(--text3)'}}>Turno</td>
+                {di.map((info,i)=>{
+                  const s=userShifts[i]||'';
+                  return(
+                    <td key={i} style={{
+                      padding:'4px 2px',textAlign:'center',
+                      background:info.fe?'rgba(247,184,79,.05)':info.we?'rgba(79,142,247,.04)':'transparent'
+                    }}>
+                      {s?<span className={`badge badge-${s}`}>{s}</span>:<span style={{fontSize:9,color:'var(--text3)',opacity:.25}}>·</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-        {/* Mis solicitudes */}
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Mis solicitudes</span>
-            <div style={{display:'flex',gap:6}}>
-              <button className="btn btn-ghost btn-sm" onClick={()=>setModal('cambio')}>+ Cambio</button>
-              <button className="btn btn-primary btn-sm" onClick={()=>setModal('vacaciones')}>+ Vacaciones</button>
-            </div>
+      {/* Mis solicitudes */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Mis solicitudes</span>
+          <div style={{display:'flex',gap:6}}>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setModal('cambio')}>+ Cambio</button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setModal('asuntos')}>+ Asuntos</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>setModal('vacaciones')}>+ Vacaciones</button>
           </div>
-          {myReqs.length===0
-            ?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No tienes solicitudes recientes.</div>
-            :myReqs.map((r,i)=>(
+        </div>
+        {pending.length>0&&(
+          <div className="alert alert-warn" style={{marginBottom:10,padding:'6px 10px'}}>
+            <span>⏳</span><span>{pending.length} solicitud{pending.length!==1?'es':''} pendiente{pending.length!==1?'s':''} de aprobación</span>
+          </div>
+        )}
+        {myReqs.length===0
+          ?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No tienes solicitudes recientes.</div>
+          :myReqs.map((r,i)=>{
+            const ti=reqLabel(r.request_type);
+            const desc=r.request_type==='swap'
+              ?`${r.requester_date||'?'} ↔ ${r.target_date||'?'}`
+              :r.request_type==='personal_day'
+              ?`${r.requester_date||'?'}`
+              :`${r.vacation_start||'?'} – ${r.vacation_end||'?'}`;
+            return(
               <div key={i} className="op-req-item">
-                <span className="tag" style={{background:r.request_type==='swap'?'var(--blue3)':'var(--green2)',color:r.request_type==='swap'?'var(--blue)':'var(--green)',borderColor:r.request_type==='swap'?'var(--blue2)':'var(--green2)',fontSize:10}}>
-                  {r.request_type==='swap'?'Cambio':'Vacaciones'}
-                </span>
-                <span style={{flex:1,color:'var(--text2)'}}>
-                  {r.request_type==='swap'
-                    ?`${r.requester_date||'?'} ↔ ${r.target_date||'?'}`
-                    :`${r.vacation_start||'?'} – ${r.vacation_end||'?'}`
-                  }
-                </span>
+                <span className="tag" style={{background:ti.bg,color:ti.c,borderColor:'transparent',fontSize:10}}>{ti.l}</span>
+                <span style={{flex:1,color:'var(--text2)'}}>{desc}</span>
                 <span className={`pill ${r.status==='approved'?'pill-ok':r.status==='rejected'?'pill-bad':'pill-warn'}`} style={{fontSize:10}}>
-                  {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':'Pendiente'}
+                  {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':'⏳ Pendiente'}
                 </span>
               </div>
-            ))
-          }
-        </div>
+            );
+          })
+        }
       </div>
 
-      {/* Formularios solicitud */}
       {modal&&(
         <OpRequestModal modal={modal} userId={user.id} userName={user.full_name} onClose={()=>setModal(null)} onSaved={()=>{
           setModal(null);
-          sb.from('shift_requests').select('*').eq('requester_id',user.id).order('created_at',{ascending:false}).limit(8).then(({data})=>setMyReqs(data||[]));
+          sb.from('shift_requests').select('*').eq('requester_id',user.id).order('created_at',{ascending:false}).limit(20).then(({data})=>setMyReqs(data||[]));
         }}/>
       )}
     </div>
@@ -1780,24 +1875,51 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
   const [emps,setEmps]=useState([]);
   const [form,setForm]=useState({date1:'',date2:'',targetId:''});
   const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState('');
   useEffect(()=>{fetchEmployees().then(d=>setEmps(d||[]));},[]);
+
+  const validateAsuntos=(dateStr)=>{
+    if(!dateStr)return null;
+    const d=new Date(dateStr+'T00:00:00');
+    const dow=d.getDay();
+    if(dow===0||dow===6)return'No puedes elegir fin de semana';
+    if(dow===1)return'No puede ser lunes';
+    if(dow===5)return'No puede ser viernes';
+    if(FEST.includes(dateStr))return'No puedes elegir un festivo';
+    const prev=new Date(d);prev.setDate(prev.getDate()-1);
+    const next=new Date(d);next.setDate(next.getDate()+1);
+    if(FEST.includes(prev.toISOString().split('T')[0]))return'No puede ser el día después de un festivo';
+    if(FEST.includes(next.toISOString().split('T')[0]))return'No puede ser el día antes de un festivo';
+    return null;
+  };
+
   const save=async()=>{
-    setSaving(true);
+    setErr('');setSaving(true);
     if(modal==='cambio'){
-      if(!form.date1||!form.date2||!form.targetId){alert('Completa todos los campos');setSaving(false);return;}
+      if(!form.date1||!form.date2||!form.targetId){setErr('Completa todos los campos');setSaving(false);return;}
       await sb.from('shift_requests').insert({request_type:'swap',requester_id:userId,requester_date:form.date1,target_date:form.date2,target_id:form.targetId,status:'pending'});
+    }else if(modal==='asuntos'){
+      const valErr=validateAsuntos(form.date1);
+      if(!form.date1){setErr('Selecciona una fecha');setSaving(false);return;}
+      if(valErr){setErr(valErr);setSaving(false);return;}
+      const {data:existing}=await sb.from('shift_requests').select('id').eq('requester_id',userId).eq('request_type','personal_day').in('status',['pending','approved']).limit(1);
+      if(existing&&existing.length>0){setErr('Ya tienes una solicitud de asuntos propios este año (solo se permite 1)');setSaving(false);return;}
+      await sb.from('shift_requests').insert({request_type:'personal_day',requester_id:userId,requester_date:form.date1,status:'pending'});
     }else{
-      if(!form.date1||!form.date2){alert('Indica fechas de inicio y fin');setSaving(false);return;}
-      if(form.date2<form.date1){alert('La fecha fin debe ser posterior al inicio');setSaving(false);return;}
+      if(!form.date1||!form.date2){setErr('Indica fechas de inicio y fin');setSaving(false);return;}
+      if(form.date2<form.date1){setErr('La fecha fin debe ser posterior al inicio');setSaving(false);return;}
       await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:2026,status:'pending'});
     }
     setSaving(false);onSaved();
   };
+
+  const titles={cambio:'Solicitar cambio de turno',asuntos:'Solicitar día de asuntos propios',vacaciones:'Solicitar vacaciones'};
   return(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="modal-title">{modal==='cambio'?'Solicitar cambio de turno':'Solicitar vacaciones'}</div>
+        <div className="modal-title">{titles[modal]||''}</div>
         <div className="modal-sub">La solicitud quedará pendiente de aprobación</div>
+        {err&&<div className="login-err">{err}</div>}
         {modal==='cambio'?(
           <>
             <div className="fg"><label className="fl">Tu día (el que cedes)</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
@@ -1808,6 +1930,27 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
                 {emps.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
               </select>
             </div>
+          </>
+        ):modal==='asuntos'?(
+          <>
+            <div className="alert alert-info" style={{marginBottom:14,fontSize:11}}>
+              <span>ℹ️</span>
+              <span>Solo puedes solicitar 1 día al año · No puede ser lunes ni viernes · No puede ser adyacente a un festivo</span>
+            </div>
+            <div className="fg">
+              <label className="fl">Fecha del día de asuntos propios</label>
+              <input className="fi" type="date" value={form.date1} onChange={e=>{setForm(p=>({...p,date1:e.target.value}));setErr('');}}/>
+            </div>
+            {form.date1&&!validateAsuntos(form.date1)&&(
+              <div className="alert alert-ok" style={{fontSize:11,marginBottom:0}}>
+                <span>✓</span><span>Fecha válida — {new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</span>
+              </div>
+            )}
+            {form.date1&&validateAsuntos(form.date1)&&(
+              <div className="alert alert-warn" style={{fontSize:11,marginBottom:0}}>
+                <span>⚠</span><span>{validateAsuntos(form.date1)}</span>
+              </div>
+            )}
           </>
         ):(
           <>
@@ -2302,9 +2445,9 @@ function App(){
           {isOperator?(
             <>
               <div className="nav-section">Mi espacio</div>
-              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'calendar',n:'calendar',l:'Calendario'},{k:'requests',n:'requests',l:'Mis solicitudes'}].map(({k,n,l})=>(
+              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
                 <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
-                  <NI n={n}/>{l}{k==='requests'&&<PendingBadge style={{marginLeft:'auto'}}/>}
+                  <NI n={n}/>{l}
                 </div>
               ))}
             </>
