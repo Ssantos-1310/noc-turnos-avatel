@@ -259,6 +259,20 @@ async function fetchCoverageRules() {
   return data || [];
 }
 
+// Convierte las reglas de BD en mínimos por turno {wk:{M,T,N}, we:{M,T,N}}
+function parseCovMins(rules) {
+  const wk={M:MWK.M,T:MWK.T,N:MWK.N};
+  const we={M:MWE.M,T:MWE.T,N:MWE.N};
+  rules.filter(r=>r.unit&&r.unit.toLowerCase().includes('operador')).forEach(r=>{
+    const l=(r.label||'').toLowerCase();
+    const k=l.includes('ma'+'ñana')||l.includes('manana')?'M':l.includes('tarde')?'T':l.includes('noche')?'N':null;
+    if(!k)return;
+    if(r.weekday_value!=null)wk[k]=r.weekday_value;
+    if(r.weekend_value!=null)we[k]=r.weekend_value;
+  });
+  return{wk,we};
+}
+
 async function saveCoverageRule(rule) {
   const { error } = await sb.from('coverage_rules').upsert(rule);
   return error;
@@ -574,11 +588,15 @@ function TodayView(){
   const t=new Date(),mi=t.getMonth(),d=t.getDate();
   const [md,setMd]=useState({});
   const [loading,setLoading]=useState(true);
+  const [covMins,setCovMins]=useState({wk:MWK,we:MWE});
   const [todayVer, setTodayVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
     const iv = setInterval(()=>{ const v=window.__calendarVersion||0; if(v!==todayVer) setTodayVer(v); },1000);
     return ()=>clearInterval(iv);
   },[todayVer]);
+  useEffect(()=>{
+    fetchCoverageRules().then(rules=>setCovMins(parseCovMins(rules)));
+  },[]);
   useEffect(()=>{
     setLoading(true);
     const key = `2026-${String(mi+1).padStart(2,'0')}`;
@@ -587,7 +605,7 @@ function TodayView(){
   },[mi,todayVer]);
   const w={M:[],T:[],N:[]};
   EMPS.forEach(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];if(s==='M')w.M.push(e);if(s==='T')w.T.push(e);if(s==='N')w.N.push(e);});
-  const fest=isFest(mi,d),we=isWE(mi,d),mr=we?MWE:MWK;
+  const fest=isFest(mi,d),isWEnd=isWE(mi,d),mr=isWEnd?covMins.we:covMins.wk;
   const ok=w.M.length>=mr.M&&w.T.length>=mr.T&&w.N.length>=mr.N;
   const absent=EMPS.filter(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return s==='B'||s==='V';});
   if(loading) return <div style={{padding:40,color:'var(--text3)',textAlign:'center'}}>⏳ Cargando datos...</div>;
@@ -598,8 +616,8 @@ function TodayView(){
           <div style={{fontSize:22,fontWeight:600}}>{t.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div>
           <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>
             {fest?<span style={{color:'var(--amber)'}}>⚡ Festivo Madrid — Bonificación activa</span>
-            :we?<span style={{color:'var(--blue)'}}>Fin de semana — Cobertura mínima: 2M/2T/2N</span>
-            :'Día laborable — Cobertura mínima: 4M/4T/2N'}
+            :isWEnd?<span style={{color:'var(--blue)'}}>Fin de semana — Cobertura mínima: {mr.M}M/{mr.T}T/{mr.N}N</span>
+            :`Día laborable — Cobertura mínima: ${mr.M}M/${mr.T}T/${mr.N}N`}
           </div>
         </div>
         <span className={`pill ${ok?'pill-ok':'pill-bad'}`} style={{marginLeft:'auto'}}>{ok?'✓ Cobertura correcta':'⚠ Cobertura insuficiente'}</span>
@@ -645,6 +663,8 @@ function CalendarView({isAdmin=true}){
   const [sel,setSel]=useState(null); // {emp, days: Set}
   const [batchModal,setBatchModal]=useState(false);
   const [batchShift,setBatchShift]=useState('M');
+  const [covMins,setCovMins]=useState({wk:MWK,we:MWE});
+  useEffect(()=>{fetchCoverageRules().then(rules=>setCovMins(parseCovMins(rules)));},[]);
 
   const [dbShifts,setDbShifts]=useState({});
   const [calLoading,setCalLoading]=useState(false);
@@ -760,7 +780,7 @@ function CalendarView({isAdmin=true}){
               <tr style={{background:'var(--bg4)'}}>
                 <td className="name-cell" style={{fontSize:10,color:'var(--text3)',padding:'2px 10px'}}>Cobertura</td>
                 {cov.map(({m,t,n},i)=>{
-                  const info=di[i],mr=info.we?MWE:MWK,all=m>=mr.M&&t>=mr.T&&n>=mr.N;
+                  const info=di[i],mr=info.we?covMins.we:covMins.wk,all=m>=mr.M&&t>=mr.T&&n>=mr.N;
                   return(<td key={i} className={tdcls(info)} style={{padding:'2px 1px'}}>
                     <div style={{width:22,height:22,borderRadius:3,background:all?'rgba(79,201,122,.2)':'rgba(247,95,95,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>
                       <span style={{fontSize:9,color:all?'var(--green)':'var(--red)',fontWeight:700}}>{all?'✓':'!'}</span>
