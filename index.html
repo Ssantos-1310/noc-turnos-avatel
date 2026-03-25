@@ -537,12 +537,7 @@ const SD={"enero":{"Zhou Hongxuan":["","","","","","","","","","","","","","",""
 
 const REC={"Zhou Hongxuan":{"M":39,"T":34,"N":28,"V":0,"B":2,"D":0,"h":824},"Hector Verdu":{"M":57,"T":22,"N":21,"V":4,"B":0,"D":0,"h":832},"Manuel Saelices":{"M":15,"T":26,"N":7,"V":0,"B":55,"D":0,"h":824},"Sergio Vara":{"M":29,"T":45,"N":21,"V":5,"B":0,"D":0,"h":824},"Francisco Castaño":{"M":43,"T":35,"N":18,"V":0,"B":0,"D":3,"h":800},"Mario Saavedra":{"M":32,"T":35,"N":32,"V":0,"B":0,"D":1,"h":816},"Juan Carlos":{"M":34,"T":35,"N":21,"V":4,"B":0,"D":0,"h":816},"Carlos Alberto":{"M":31,"T":39,"N":28,"V":0,"B":0,"D":4,"h":824},"Ruben Culebras":{"M":23,"T":46,"N":31,"V":3,"B":0,"D":1,"h":824},"Sergio Luque":{"M":37,"T":33,"N":21,"V":11,"B":0,"D":1,"h":816},"Valentina Vargas":{"M":38,"T":46,"N":21,"V":0,"B":0,"D":0,"h":840},"Pedro Ayuso":{"M":43,"T":34,"N":19,"V":0,"B":0,"D":0,"h":840},"Hector Lamus":{"M":36,"T":34,"N":21,"V":0,"B":7,"D":1,"h":800},"Leandro Yorlan":{"M":43,"T":39,"N":21,"V":0,"B":0,"D":3,"h":824}};
 
-// Festivos oficiales Comunidad de Madrid 2026
-// Fuente: calendario laboral oficial CAM 2026
-// - Eliminados: 24-jun (San Juan, no es festivo en Madrid) y 25-jul (Santiago, no aplica CAM)
-// - 1-nov cae domingo → se traslada al lunes 2-nov (Todos los Santos)
-// - 7-dic: lunes puente antes de la Inmaculada (8-dic martes)
-const FEST=["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07","2026-12-08","2026-12-25"];
+const FEST=["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-06-24","2026-07-25","2026-08-15","2026-10-12","2026-11-01","2026-11-09","2026-12-08","2026-12-25"];
 const EMPS=["Hector Jose Lamus Moreno","Hector Verdu Relaño","Francisco Castaño Montouto","Mario Saavedra Mateo","Ruben Culebras Blanco","Manuel Saelices Escolar","Marianela Beatriz Vasquez Guardia","Pedro Pablo Ayuso Muñoz","Juan Carlos Farfan Mallaupoma","Leandro Yorlan Roman Jaimes","Sergio Vara","Zhou Hongxuan","Valentina Vargas Moreno","Sergio Luque Lavado","Carlos Alberto Hilleshein","Manuel Loro Sanchez de Pablo","Jose Luis Carrillo Sierra"];
 // Short name → full name mapping for shift data lookup
 const EMP_SHORT={"Hector Jose Lamus Moreno":"Hector Lamus","Hector Verdu Relaño":"Hector Verdu","Francisco Castaño Montouto":"Francisco Castaño","Mario Saavedra Mateo":"Mario Saavedra","Ruben Culebras Blanco":"Ruben Culebras","Manuel Saelices Escolar":"Manuel Saelices","Marianela Beatriz Vasquez Guardia":"Marianela Beatriz","Pedro Pablo Ayuso Muñoz":"Pedro Ayuso","Juan Carlos Farfan Mallaupoma":"Juan Carlos","Leandro Yorlan Roman Jaimes":"Leandro Yorlan","Sergio Vara":"Sergio Vara","Zhou Hongxuan":"Zhou Hongxuan","Valentina Vargas Moreno":"Valentina Vargas","Sergio Luque Lavado":"Sergio Luque","Carlos Alberto Hilleshein":"Carlos Alberto","Manuel Loro Sanchez de Pablo":"Manuel Loro","Jose Luis Carrillo Sierra":"Jose Luis Carrillo"};
@@ -1288,9 +1283,8 @@ function HistorialView(){
           {loading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando historial...</div>}
           {!loading&&hist.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes resueltas aún.</div>}
           {!loading&&hist.length>0&&(
-            <div style={{maxHeight:340,overflowY:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-              <thead style={{position:'sticky',top:0,background:'var(--bg2)',zIndex:1}}>
+              <thead>
                 <tr style={{borderBottom:'1px solid var(--border)',color:'var(--text3)'}}>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Operador</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Tipo</th>
@@ -1337,7 +1331,6 @@ function HistorialView(){
                 ))}
               </tbody>
             </table>
-            </div>
           )}
         </div>
       )}
@@ -1427,70 +1420,6 @@ function AdminView(){
   return(
     <div>
       <div className="alert alert-info" style={{marginBottom:20}}><span>🔒</span><span>Panel de administración — acceso restringido a Coordinador y Responsable</span></div>
-
-      {/* ── Gestión de solicitudes ── */}
-      <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',color:'var(--text3)',marginBottom:10,paddingBottom:6,borderBottom:'1px solid var(--border)'}}>Gestión de solicitudes</div>
-
-      {/* Solicitudes pendientes */}
-      <div className="card" style={{marginBottom:16}}>
-        <div className="card-header"><span className="card-title">Solicitudes pendientes</span>{adminReqs.length>0&&<span className="notif">{adminReqs.length}</span>}</div>
-        {adminReqsLoading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando...</div>}
-        {!adminReqsLoading&&adminReqs.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes pendientes.</div>}
-        {adminReqs.map(r=>(
-          <div key={r.id} className="req-item">
-            <div className="req-av">{r.av}</div>
-            <div className="req-info">
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                <span className="req-name">{r.name}</span>
-                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':r.type==='asuntos'?'var(--orange3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':r.type==='asuntos'?'var(--orange)':'var(--green)',borderColor:'transparent'}}>{r.type==='cambio'?'Cambio turno':r.type==='asuntos'?'Asuntos propios':'Vacaciones'}</span>
-                <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
-              </div>
-              <div className="req-desc">{r.desc}</div>
-              {r.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:3,fontStyle:'italic'}}>💬 {r.notes}</div>}
-            </div>
-            <div className="req-actions">
-              <button className="btn btn-ok btn-sm" onClick={async()=>{
-                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(!r.id||!r.id.includes('-'))return;
-                const empId=r.requester_id;
-                if(r.type==='vacaciones'&&empId&&r.vacation_start&&r.vacation_end){
-                  const days=[];let cur=r.vacation_start;
-                  while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
-                  for(const day of days){await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});}
-                  const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
-                  if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
-                  [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                }else if(r.type==='cambio'&&empId&&r.requester_date&&r.target_date&&r.target_id){
-                  const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
-                  const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
-                  if(s1?.id)await sb.from('shifts').delete().eq('id',s1.id);
-                  if(s2?.id)await sb.from('shifts').delete().eq('id',s2.id);
-                  if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
-                  if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
-                  [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                }else if(r.type==='asuntos'&&empId&&r.requester_date){
-                  await sb.from('shifts').upsert({employee_id:empId,shift_date:r.requester_date,shift_type:'P'},{onConflict:'employee_id,shift_date'});
-                  delete shiftsCache[r.requester_date.substring(0,7)];
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                }
-                await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✓ Aprobar</button>
-              <button className="btn btn-danger btn-sm" onClick={async()=>{
-                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(r.id&&r.id.includes('-'))await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✗ Rechazar</button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Historial de Solicitudes */}
-      <HistorialView />
-
-      {/* ── Gestión de personal y cobertura ── */}
-      <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',color:'var(--text3)',margin:'20px 0 10px',paddingBottom:6,borderBottom:'1px solid var(--border)'}}>Gestión de personal y cobertura</div>
 
       <div className="grid-2" style={{marginBottom:16}}>
         {/* Gestión operadores */}
@@ -1595,6 +1524,64 @@ function AdminView(){
         </div>
       </div>
 
+      {/* Solicitudes pendientes — debajo del grid */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><span className="card-title">Solicitudes pendientes</span>{adminReqs.length>0&&<span className="notif">{adminReqs.length}</span>}</div>
+        {adminReqsLoading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando...</div>}
+        {!adminReqsLoading&&adminReqs.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes pendientes.</div>}
+        {adminReqs.map(r=>(
+          <div key={r.id} className="req-item">
+            <div className="req-av">{r.av}</div>
+            <div className="req-info">
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                <span className="req-name">{r.name}</span>
+                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':r.type==='asuntos'?'var(--orange3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':r.type==='asuntos'?'var(--orange)':'var(--green)',borderColor:'transparent'}}>{r.type==='cambio'?'Cambio turno':r.type==='asuntos'?'Asuntos propios':'Vacaciones'}</span>
+                <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
+              </div>
+              <div className="req-desc">{r.desc}</div>
+              {r.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:3,fontStyle:'italic'}}>💬 {r.notes}</div>}
+            </div>
+            <div className="req-actions">
+              <button className="btn btn-ok btn-sm" onClick={async()=>{
+                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
+                if(!r.id||!r.id.includes('-'))return;
+                const empId=r.requester_id;
+                if(r.type==='vacaciones'&&empId&&r.vacation_start&&r.vacation_end){
+                  const days=[];let cur=r.vacation_start;
+                  while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
+                  for(const day of days){await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});}
+                  const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
+                  if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
+                  [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
+                  window.__calendarVersion=(window.__calendarVersion||0)+1;
+                }else if(r.type==='cambio'&&empId&&r.requester_date&&r.target_date&&r.target_id){
+                  const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
+                  const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
+                  if(s1?.id)await sb.from('shifts').delete().eq('id',s1.id);
+                  if(s2?.id)await sb.from('shifts').delete().eq('id',s2.id);
+                  if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
+                  if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
+                  [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
+                  window.__calendarVersion=(window.__calendarVersion||0)+1;
+                }else if(r.type==='asuntos'&&empId&&r.requester_date){
+                  await sb.from('shifts').upsert({employee_id:empId,shift_date:r.requester_date,shift_type:'P'},{onConflict:'employee_id,shift_date'});
+                  delete shiftsCache[r.requester_date.substring(0,7)];
+                  window.__calendarVersion=(window.__calendarVersion||0)+1;
+                }
+                await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
+              }}>✓ Aprobar</button>
+              <button className="btn btn-danger btn-sm" onClick={async()=>{
+                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
+                if(r.id&&r.id.includes('-'))await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',r.id);
+              }}>✗ Rechazar</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Historial de Solicitudes */}
+      <HistorialView />
+
       {/* Diagnósticos DB */}
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header">
@@ -1621,6 +1608,14 @@ function AdminView(){
         {!diagResults&&!diagLoading&&(
           <div style={{fontSize:12,color:'var(--text3)'}}>Pulsa "Ejecutar test" para verificar la conexión con Supabase.</div>
         )}
+      </div>
+
+      {/* Festivos */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">Festivos Madrid 2026</span></div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+          {FEST.map(f=>{const d=new Date(f+'T00:00:00');return(<span key={f} className="tag" style={{background:'rgba(247,184,79,.1)',color:'var(--amber)',borderColor:'rgba(247,184,79,.3)'}}>⚡ {d.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</span>);})}
+        </div>
       </div>
 
       {/* Modal Editar Empleado */}
@@ -1852,6 +1847,11 @@ function OperatorDashboard({user}){
           </div>
         </div>
       </div>
+
+      {/* Vista de hoy */}
+      <div style={{marginBottom:8,fontSize:13,fontWeight:600,color:'var(--text2)',letterSpacing:'.04em',textTransform:'uppercase'}}>Hoy</div>
+      <TodayView/>
+      <div style={{height:16}}/>
 
       {/* Resumen del mes */}
       <div className="card" style={{marginBottom:16,padding:0,overflow:'hidden'}}>
@@ -2548,7 +2548,7 @@ function App(){
           {isOperator?(
             <>
               <div className="nav-section">Mi espacio</div>
-              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'today',n:'today',l:'Hoy'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
+              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
                 <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
                   <NI n={n}/>{l}
                 </div>
@@ -2563,6 +2563,9 @@ function App(){
                 </div>
               ))}
               <div className="nav-section">Gestión</div>
+              <div className={`nav-item ${page==='requests'?'active':''}`} onClick={()=>setPage('requests')}>
+                <NI n="requests"/>Solicitudes<PendingBadge style={{marginLeft:'auto'}}/>
+              </div>
               <div className={`nav-item ${adminPages.includes(page)?'active':''}`} style={{justifyContent:'space-between'}}
                 onClick={()=>{setAdminOpen(o=>!o);if(!adminPages.includes(page))setPage('admin');}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}><NI n="admin"/>Administración</div>
