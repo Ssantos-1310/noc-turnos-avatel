@@ -1906,8 +1906,8 @@ function OperatorDashboard({user}){
               <div key={i} className="op-req-item">
                 <span className="tag" style={{background:ti.bg,color:ti.c,borderColor:'transparent',fontSize:10}}>{ti.l}</span>
                 <span style={{flex:1,color:'var(--text2)'}}>{desc}</span>
-                <span className={`pill ${r.status==='approved'?'pill-ok':r.status==='rejected'?'pill-bad':'pill-warn'}`} style={{fontSize:10}}>
-                  {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':'⏳ Pendiente'}
+                <span className={`pill ${r.status==='approved'?'pill-ok':r.status==='rejected'?'pill-bad':r.status==='cancelled'?'pill-neutral':'pill-warn'}`} style={{fontSize:10}}>
+                  {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':r.status==='cancelled'?'✕ Cancelada':'⏳ Pendiente'}
                 </span>
               </div>
             );
