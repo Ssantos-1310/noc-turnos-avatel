@@ -1200,6 +1200,7 @@ function HistorialView(){
   const [hist,setHist]=useState([]);
   const [loading,setLoading]=useState(true);
   const [open,setOpen]=useState(false);
+  const [cancelling,setCancelling]=useState(null);
 
   useEffect(()=>{
     if(!open)return;
@@ -1207,9 +1208,52 @@ function HistorialView(){
     fetchRequestHistory(100).then(({data})=>{setHist(data);setLoading(false);});
   },[open]);
 
+  const cancelRequest=async(h)=>{
+    if(!confirm(`¿Cancelar la solicitud de ${h.requester_name}?\nSe revertirán los cambios aplicados.`))return;
+    setCancelling(h.id);
+    const {data:req}=await sb.from('shift_requests').select('*').eq('id',h.id).single();
+    if(!req){setCancelling(null);return;}
+    const empId=req.requester_id;
+
+    if(req.request_type==='vacation'&&empId&&req.vacation_start&&req.vacation_end){
+      const days=[];let cur=req.vacation_start;
+      while(cur<=req.vacation_end){
+        days.push(cur);
+        const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];
+      }
+      for(const day of days){
+        await sb.from('shifts').delete().eq('employee_id',empId).eq('shift_date',day).eq('shift_type','V');
+      }
+      const {data:bal}=await sb.from('vacation_balance').select('days_used').eq('employee_id',empId).eq('year',2026).single();
+      if(bal){await sb.from('vacation_balance').update({days_used:Math.max(0,bal.days_used-days.length)}).eq('employee_id',empId).eq('year',2026);}
+      [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+
+    }else if(req.request_type==='personal_day'&&empId&&req.requester_date){
+      await sb.from('shifts').delete().eq('employee_id',empId).eq('shift_date',req.requester_date).eq('shift_type','P');
+      delete shiftsCache[req.requester_date.substring(0,7)];
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+
+    }else if(req.request_type==='swap'&&empId&&req.target_id&&req.requester_date&&req.target_date){
+      // Current post-swap state: empA has target's original shift on target_date, empB has empA's original on requester_date
+      const {data:cur1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',req.target_date).maybeSingle();
+      const {data:cur2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',req.target_id).eq('shift_date',req.requester_date).maybeSingle();
+      if(cur1?.id)await sb.from('shifts').delete().eq('id',cur1.id);
+      if(cur2?.id)await sb.from('shifts').delete().eq('id',cur2.id);
+      if(cur2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:req.requester_date,shift_type:cur2.shift_type},{onConflict:'employee_id,shift_date'});
+      if(cur1?.shift_type)await sb.from('shifts').upsert({employee_id:req.target_id,shift_date:req.target_date,shift_type:cur1.shift_type},{onConflict:'employee_id,shift_date'});
+      [req.requester_date?.substring(0,7),req.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+    }
+
+    await sb.from('shift_requests').update({status:'cancelled',resolved_at:new Date().toISOString()}).eq('id',h.id);
+    setHist(prev=>prev.map(x=>x.id===h.id?{...x,status:'cancelled'}:x));
+    setCancelling(null);
+  };
+
   const TYPE_LABEL={'swap':'Cambio turno','vacation':'Vacaciones','personal_day':'Asuntos propios'};
-  const STATUS_COLOR={'approved':'var(--green)','rejected':'var(--red)'};
-  const STATUS_LABEL={'approved':'Aprobada','rejected':'Rechazada'};
+  const STATUS_COLOR={'approved':'var(--green)','rejected':'var(--red)','cancelled':'var(--text3)'};
+  const STATUS_LABEL={'approved':'Aprobada','rejected':'Rechazada','cancelled':'Cancelada'};
 
   return(
     <div className="card" style={{marginBottom:16}}>
@@ -1231,11 +1275,12 @@ function HistorialView(){
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Estado</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Aprobador</th>
                   <th style={{padding:'6px 8px',textAlign:'left',fontWeight:500}}>Fecha</th>
+                  <th style={{padding:'6px 4px'}}></th>
                 </tr>
               </thead>
               <tbody>
                 {hist.map(h=>(
-                  <tr key={h.id} style={{borderBottom:'1px solid rgba(255,255,255,.04)'}}>
+                  <tr key={h.id} style={{borderBottom:'1px solid rgba(255,255,255,.04)',opacity:h.status==='cancelled'?.45:1}}>
                     <td style={{padding:'6px 8px',fontWeight:500}}>{h.requester_name}</td>
                     <td style={{padding:'6px 8px',color:'var(--text3)'}}>{TYPE_LABEL[h.request_type]||h.request_type}</td>
                     <td style={{padding:'6px 8px',color:'var(--text3)'}}>
@@ -1255,6 +1300,13 @@ function HistorialView(){
                     <td style={{padding:'6px 8px',color:'var(--text3)'}}>{h.approver_name||'–'}</td>
                     <td style={{padding:'6px 8px',fontFamily:'var(--mono)',color:'var(--text3)',fontSize:11}}>
                       {h.resolved_at?new Date(h.resolved_at).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'–'}
+                    </td>
+                    <td style={{padding:'6px 4px',textAlign:'right'}}>
+                      {h.status==='approved'&&(
+                        <button className="btn btn-danger btn-sm" style={{fontSize:10,padding:'2px 8px'}} disabled={cancelling===h.id} onClick={()=>cancelRequest(h)}>
+                          {cancelling===h.id?'…':'✕ Cancelar'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
