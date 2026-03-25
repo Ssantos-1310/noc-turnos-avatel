@@ -590,6 +590,16 @@ function TodayView(){
   const [md,setMd]=useState({});
   const [loading,setLoading]=useState(true);
   const [covMins,setCovMins]=useState({wk:MWK,we:MWE});
+  const [emps,setEmps]=useState(EMPS);
+  const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
+  useEffect(()=>{
+    sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
+      if(data&&data.length>0){
+        setEmps(data.filter(e=>e.role==='operator').map(e=>e.full_name));
+        const m={};data.forEach(e=>{m[e.full_name]=e.short_name;});setEmpShortMap(m);
+      }
+    });
+  },[]);
   const [todayVer, setTodayVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
     const iv = setInterval(()=>{ const v=window.__calendarVersion||0; if(v!==todayVer) setTodayVer(v); },1000);
@@ -605,10 +615,10 @@ function TodayView(){
     fetchShiftsForMonth(mi).then(data=>{setMd(data);setLoading(false)});
   },[mi,todayVer]);
   const w={M:[],T:[],N:[]};
-  EMPS.forEach(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];if(s==='M')w.M.push(e);if(s==='T')w.T.push(e);if(s==='N')w.N.push(e);});
+  emps.forEach(e=>{const ek=empShortMap[e]||EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];if(s==='M')w.M.push(e);if(s==='T')w.T.push(e);if(s==='N')w.N.push(e);});
   const fest=isFest(mi,d),isWEnd=isWE(mi,d),mr=isWEnd?covMins.we:covMins.wk;
   const ok=w.M.length>=mr.M&&w.T.length>=mr.T&&w.N.length>=mr.N;
-  const absent=EMPS.filter(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return s==='B'||s==='V';});
+  const absent=emps.filter(e=>{const ek=empShortMap[e]||EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return s==='B'||s==='V';});
   if(loading) return <div style={{padding:40,color:'var(--text3)',textAlign:'center'}}>⏳ Cargando datos...</div>;
   return(
     <div>
@@ -660,7 +670,7 @@ function TodayView(){
         <div className="card">
           <div className="card-header"><span className="card-title">Ausencias hoy</span></div>
           {absent.length===0?<div style={{fontSize:12,color:'var(--text3)'}}>Sin ausencias registradas</div>
-          :absent.map(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return(
+          :absent.map(e=>{const ek=empShortMap[e]||EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return(
             <div key={e} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(42,51,80,.3)'}}>
               <span>{e}</span><span className={`pill ${s==='B'?'pill-bad':'pill-warn'}`} style={{marginLeft:'auto'}}>{SL[s]||''}</span>
             </div>);})}
@@ -680,7 +690,17 @@ function CalendarView({isAdmin=true}){
   const [batchModal,setBatchModal]=useState(false);
   const [batchShift,setBatchShift]=useState('M');
   const [covMins,setCovMins]=useState({wk:MWK,we:MWE});
+  const [emps,setEmps]=useState(EMPS);
+  const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
   useEffect(()=>{fetchCoverageRules().then(rules=>setCovMins(parseCovMins(rules)));},[]);
+  useEffect(()=>{
+    sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
+      if(data&&data.length>0){
+        setEmps(data.filter(e=>e.role==='operator').map(e=>e.full_name));
+        const m={};data.forEach(e=>{m[e.full_name]=e.short_name;});setEmpShortMap(m);
+      }
+    });
+  },[]);
 
   const [dbShifts,setDbShifts]=useState({});
   const [calLoading,setCalLoading]=useState(false);
@@ -707,7 +727,7 @@ function CalendarView({isAdmin=true}){
   // Merge: dbShifts override static SD for loaded months
   const md = {...(SD[mk]||{}),...dbShifts};
   const di=useMemo(()=>Array.from({length:days},(_,i)=>({we:isWE(mi,i+1),fe:isFest(mi,i+1),to:isTod(mi,i+1),dow:new Date(2026,mi,i+1).getDay()})),[mi,days]);
-  const cov=useMemo(()=>Array.from({length:days},(_,i)=>{let m=0,t=0,n=0;EMPS.forEach(e=>{const ek=EMP_SHORT[e]||e;const s=(md[ek]||[])[i];if(s==='M')m++;if(s==='T')t++;if(s==='N')n++;});return{m,t,n};}),[mi,md,days]);
+  const cov=useMemo(()=>Array.from({length:days},(_,i)=>{let m=0,t=0,n=0;emps.forEach(e=>{const ek=empShortMap[e]||EMP_SHORT[e]||e;const s=(md[ek]||[])[i];if(s==='M')m++;if(s==='T')t++;if(s==='N')n++;});return{m,t,n};}),[mi,md,days,emps,empShortMap]);
 
   const thcls=info=>{if(info.fe)return 'th-festivo';if(info.to)return 'th-today';if(info.we)return 'th-weekend';return '';};
   const tdcls=info=>{if(info.fe)return 'td-festivo';if(info.to)return 'td-today';if(info.we)return 'td-weekend';return '';};
@@ -729,7 +749,7 @@ function CalendarView({isAdmin=true}){
   const applyBatch=async()=>{
     if(!sel)return;
     // Save each changed day to DB
-    const empKey=EMP_SHORT[sel.emp]||sel.emp;
+    const empKey=empShortMap[sel.emp]||EMP_SHORT[sel.emp]||sel.emp;
     const savePromises=[...sel.days].map(dayIdx=>{
       const date=`2026-${String(mi+1).padStart(2,'0')}-${String(dayIdx+1).padStart(2,'0')}`;
       return saveShift(empKey, date, batchShift);
@@ -806,11 +826,11 @@ function CalendarView({isAdmin=true}){
               </tr>
             </thead>
             <tbody>
-              {EMPS.map(emp=>(
+              {emps.map(emp=>(
                 <tr key={emp}>
                   <td className="name-cell">{emp}</td>
                   {di.map((info,i)=>{
-                    const empKey=EMP_SHORT[emp]||emp;
+                    const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
                     const s=(md[empKey]||[])[i]||'';
                     const isSel=sel&&sel.emp===emp&&sel.days.has(i);
                     const isSelEmp=sel&&sel.emp===emp;
@@ -887,7 +907,7 @@ function TeamView(){
 
   // Turno actual
   function getTurno(emp){
-    const empKey=EMP_SHORT[emp]||emp;
+    const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
     const s=(md[empKey]||[])[d-1]||'';
     if(s==='M') return{label:'Mañana',cls:'pill-blue'};
     if(s==='T') return{label:'Tarde',cls:'pill-purple'};
@@ -896,26 +916,24 @@ function TeamView(){
     if(s==='O') return{label:'Onboarding',cls:'pill-neutral'};
     return{label:'Libre',cls:'pill-ok'};
   }
-  // Situación laboral (prioridad sobre turno)
   function getSituacion(emp){
-    const empKey=EMP_SHORT[emp]||emp;
+    const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
     const s=(md[empKey]||[])[d-1]||'';
     if(s==='B') return{label:'Baja',cls:'pill-bad'};
     if(s==='V') return{label:'Vacaciones',cls:'pill-warn'};
     return null; // normal = no special situation
   }
 
-  const ed=useMemo(()=>EMPS.map(emp=>{
-    // REC uses short names, EMPS uses full names — map via EMP_SHORT
-    const shortKey=EMP_SHORT[emp]||emp;
+  const ed=useMemo(()=>emps.map(emp=>{
+    const shortKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
     const r=REC[shortKey]||{};const h=r.h||0;const j=(r.M||0)+(r.T||0)+(r.N||0);const eh=(r.D||0)*8;
     const hst=h>HMAX?'bad':h>HMAX*.92?'warn':'ok';
     return{emp,r,h,j,eh,hst};
-  }),[]);
+  }),[emps,empShortMap]);
 
   // Build lists for the widget
-  const bajas=EMPS.filter(e=>(md[EMP_SHORT[e]||e]||[])[d-1]==='B');
-  const vacas=EMPS.filter(e=>(md[EMP_SHORT[e]||e]||[])[d-1]==='V');
+  const bajas=emps.filter(e=>(md[empShortMap[e]||EMP_SHORT[e]||e]||[])[d-1]==='B');
+  const vacas=emps.filter(e=>(md[empShortMap[e]||EMP_SHORT[e]||e]||[])[d-1]==='V');
 
   return(
     <div>
@@ -926,7 +944,7 @@ function TeamView(){
             <div className="stat-label">Equipo</div>
           </div>
           <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:10}}>
-            <span className="stat-val" style={{color:'var(--teal)'}}>{EMPS.length}</span>
+            <span className="stat-val" style={{color:'var(--teal)'}}>{emps.length}</span>
             <span style={{fontSize:12,color:'var(--text3)'}}>operadores</span>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -1340,14 +1358,37 @@ function HistorialView(){
 
 function AdminView(){
   const [showNE,setShowNE]=useState(false);
-  const [editingEmp,setEditingEmp]=useState(null); // {id,full_name,short_name,email,role,username,active,newPassword}
+  const [editingEmp,setEditingEmp]=useState(null);
   const [empSaving,setEmpSaving]=useState(false);
+  const [newUser,setNewUser]=useState({role:'operator',firstName:'',lastName:'',email:'',joinDate:'',baseShift:'M'});
+  const [newUErr,setNewUErr]=useState('');
+  const diagResultsRef=React.useRef(null);
   const [diagResults,setDiagResults]=useState(null);
   const [diagLoading,setDiagLoading]=useState(false);
   const [empList,setEmpList]=useState([]);
   const [empLoading,setEmpLoading]=useState(true);
   const [adminReqs,setAdminReqs]=useState([]);
   const [adminReqsLoading,setAdminReqsLoading]=useState(true);
+
+  const resetNewUser=()=>setNewUser({role:'operator',firstName:'',lastName:'',email:'',joinDate:'',baseShift:'M'});
+  const saveNewUser=async()=>{
+    const {firstName,lastName,email,role,joinDate}=newUser;
+    if(!firstName.trim()||!lastName.trim()){setNewUErr('Nombre y apellidos son obligatorios');return;}
+    if(!email.trim()){setNewUErr('El email corporativo es obligatorio');return;}
+    const full_name=`${firstName.trim()} ${lastName.trim()}`;
+    const parts=lastName.trim().split(' ');
+    const short_name=`${firstName.trim()} ${parts[0]}`;
+    const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'.');
+    const username=`${norm(firstName.trim())}.${norm(parts[0])}`;
+    setEmpSaving(true);setNewUErr('');
+    const rec={full_name,short_name,email:email.trim(),role,active:true,password:'avatel2026',username};
+    if(role==='operator'&&joinDate)rec.join_date=joinDate;
+    const {error}=await sb.from('employees').insert(rec);
+    if(error){setNewUErr(error.message);setEmpSaving(false);return;}
+    const {data}=await sb.from('employees').select('*').order('full_name');
+    setEmpList(data||[]);
+    setEmpSaving(false);setShowNE(false);resetNewUser();
+  };
 
   const loadAdminReqs=()=>{
     setAdminReqsLoading(true);
@@ -1426,7 +1467,7 @@ function AdminView(){
         <div className="card">
           <div className="card-header">
             <span className="card-title">Gestión de operadores</span>
-            <button className="btn btn-primary" style={{fontSize:12}} onClick={()=>setShowNE(true)}>+ Alta operador</button>
+            <button className="btn btn-primary" style={{fontSize:12}} onClick={()=>{setShowNE(true);setNewUErr('');}}>+ Alta usuario</button>
           </div>
           <div className="alert alert-warn"><span>⚡</span><span>{empLoading?'Cargando...':`${empList.filter(e=>e.active).length} operadores activos. Objetivo: 21–22 operadores.`}</span></div>
           {empLoading
@@ -1670,17 +1711,36 @@ function AdminView(){
       )}
 
       {showNE&&(
-        <div className="modal-overlay" onClick={()=>setShowNE(false)}>
+        <div className="modal-overlay" onClick={()=>{setShowNE(false);resetNewUser();}}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-title">Alta de nuevo operador</div>
-            <div className="modal-sub">Se asignarán 2 semanas de onboarding automáticamente y se desplegará el turno anual</div>
-            <div className="frow"><div className="fg"><label className="fl">Nombre</label><input className="fi" placeholder="Nombre"/></div><div className="fg"><label className="fl">Apellidos</label><input className="fi" placeholder="Apellidos"/></div></div>
-            <div className="fg"><label className="fl">Email corporativo</label><input className="fi" type="email" placeholder="nombre@avatel.es"/></div>
-            <div className="frow"><div className="fg"><label className="fl">Fecha incorporación</label><input className="fi" type="date"/></div><div className="fg"><label className="fl">Turno base</label><select className="fs"><option>Mañana</option><option>Tarde</option><option>Noche</option></select></div></div>
-            <div className="alert alert-info" style={{margin:'4px 0 16px'}}><span>📋</span><span>2 semanas de <strong>Onboarding (O)</strong> asignadas automáticamente.</span></div>
-            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-              <button className="btn btn-ghost" onClick={()=>setShowNE(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={()=>{setShowNE(false);alert('Operador dado de alta. Onboarding asignado y turno desplegado.');}}>Dar de alta</button>
+            <div className="modal-title">Alta de nuevo usuario</div>
+            <div className="modal-sub">Contraseña inicial: <code style={{background:'var(--bg3)',padding:'1px 5px',borderRadius:3,fontSize:11}}>avatel2026</code></div>
+
+            <div className="fg" style={{marginBottom:14}}>
+              <label className="fl">Rol</label>
+              <div style={{display:'flex',gap:8}}>
+                <button className={`btn btn-sm ${newUser.role==='operator'?'btn-primary':'btn-ghost'}`} onClick={()=>setNewUser(p=>({...p,role:'operator'}))}>Operador</button>
+                <button className={`btn btn-sm ${newUser.role==='admin'?'btn-primary':'btn-ghost'}`} onClick={()=>setNewUser(p=>({...p,role:'admin'}))}>Administrador</button>
+              </div>
+            </div>
+
+            <div className="frow">
+              <div className="fg"><label className="fl">Nombre</label><input className="fi" value={newUser.firstName} onChange={e=>setNewUser(p=>({...p,firstName:e.target.value}))} placeholder="Nombre"/></div>
+              <div className="fg"><label className="fl">Apellidos</label><input className="fi" value={newUser.lastName} onChange={e=>setNewUser(p=>({...p,lastName:e.target.value}))} placeholder="Apellidos"/></div>
+            </div>
+            <div className="fg"><label className="fl">Email corporativo</label><input className="fi" type="email" value={newUser.email} onChange={e=>setNewUser(p=>({...p,email:e.target.value}))} placeholder="nombre@avatel.es"/></div>
+
+            {newUser.role==='operator'&&(
+              <div className="frow">
+                <div className="fg"><label className="fl">Fecha incorporación</label><input className="fi" type="date" value={newUser.joinDate} onChange={e=>setNewUser(p=>({...p,joinDate:e.target.value}))}/></div>
+                <div className="fg"><label className="fl">Turno base</label><select className="fs" value={newUser.baseShift} onChange={e=>setNewUser(p=>({...p,baseShift:e.target.value}))}><option value="M">Mañana</option><option value="T">Tarde</option><option value="N">Noche</option></select></div>
+              </div>
+            )}
+
+            {newUErr&&<div className="alert alert-danger" style={{margin:'8px 0 0'}}><span>⚠</span><span>{newUErr}</span></div>}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+              <button className="btn btn-ghost" onClick={()=>{setShowNE(false);resetNewUser();}}>Cancelar</button>
+              <button className="btn btn-primary" disabled={empSaving} onClick={saveNewUser}>{empSaving?'Guardando…':'Dar de alta'}</button>
             </div>
           </div>
         </div>
@@ -1848,10 +1908,6 @@ function OperatorDashboard({user}){
         </div>
       </div>
 
-      {/* Vista de hoy */}
-      <div style={{marginBottom:8,fontSize:13,fontWeight:600,color:'var(--text2)',letterSpacing:'.04em',textTransform:'uppercase'}}>Hoy</div>
-      <TodayView/>
-      <div style={{height:16}}/>
 
       {/* Resumen del mes */}
       <div className="card" style={{marginBottom:16,padding:0,overflow:'hidden'}}>
@@ -2548,7 +2604,7 @@ function App(){
           {isOperator?(
             <>
               <div className="nav-section">Mi espacio</div>
-              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
+              {[{k:'opdashboard',n:'today',l:'Mi Panel'},{k:'today',n:'today',l:'Hoy'},{k:'calendar',n:'calendar',l:'Calendario'}].map(({k,n,l})=>(
                 <div key={k} className={`nav-item ${page===k?'active':''}`} onClick={()=>setPage(k)}>
                   <NI n={n}/>{l}
                 </div>
