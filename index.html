@@ -1388,8 +1388,12 @@ function AdminView(){
     setEmpSaving(true);setNewUErr('');
     const rec={full_name,short_name,email:email.trim(),role,active:true,password:'avatel2026',username};
     if(role==='operator'&&joinDate)rec.join_date=joinDate;
-    const {error}=await sb.from('employees').insert(rec);
+    const {data:inserted,error}=await sb.from('employees').insert(rec).select('id').single();
     if(error){setNewUErr(error.message);setEmpSaving(false);return;}
+    // Auto-crear saldo de vacaciones para operadores nuevos (days_total=23, days_used=0 por defecto)
+    if(role==='operator'&&inserted?.id){
+      await sb.from('vacation_balance').insert({employee_id:inserted.id,year:2026});
+    }
     const {data}=await sb.from('employees').select('*').order('full_name');
     setEmpList(data||[]);
     setEmpSaving(false);setShowNE(false);resetNewUser();
@@ -2662,7 +2666,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.3 — Login + UI fixes</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.4 — Sprint 0: vacation_balance auto-create</div>
         </div>
       </div>
 
