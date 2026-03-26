@@ -892,6 +892,16 @@ function TeamView(){
   const today=new Date(),mi=today.getMonth(),d=today.getDate();
   const [md,setMd]=useState({});
   const [vacBalances,setVacBalances]=useState({});
+  const [emps,setEmps]=useState(EMPS);
+  const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
+  useEffect(()=>{
+    sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
+      if(data&&data.length>0){
+        setEmps(data.filter(e=>e.role==='operator').map(e=>e.full_name));
+        const m={};data.forEach(e=>{m[e.full_name]=e.short_name;});setEmpShortMap(m);
+      }
+    });
+  },[]);
   useEffect(()=>{fetchShiftsForMonth(mi).then(setMd);},[mi]);
   const [vacVer, setVacVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
@@ -2666,7 +2676,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.4 — Sprint 0: vacation_balance auto-create</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.5 — fix: TeamView emps dinámico</div>
         </div>
       </div>
 
