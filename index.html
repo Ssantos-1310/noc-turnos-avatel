@@ -206,6 +206,7 @@ const { useState, useMemo, useCallback, useEffect } = React;
 const SUPABASE_URL = 'https://naywdwsjwtbagbzrncke.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5heXdkd3Nqd3RiYWdienJuY2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTM4MTAsImV4cCI6MjA4OTc2OTgxMH0.hoLOn9py6G99Bivp_NQgmL8g7H3XnuAryz6RkQ3UE6g';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const EF_URL = `${SUPABASE_URL}/functions/v1`; // Edge Functions base URL
 
 // ── DB HELPERS ────────────────────────────────────────────────────────────────
 // Cache to avoid re-fetching same month
@@ -1444,7 +1445,20 @@ function AdminView(){
     if(role==='operator'&&joinDate)rec.join_date=joinDate;
     const {data:inserted,error}=await sb.from('employees').insert(rec).select('id').single();
     if(error){setNewUErr(error.message);setEmpSaving(false);return;}
-    // Auto-crear saldo de vacaciones para operadores nuevos (days_total=23, days_used=0 por defecto)
+    // Crear usuario en Supabase Auth via Edge Function
+    try{
+      const session=(await sb.auth.getSession()).data.session;
+      const authResp=await fetch(`${EF_URL}/manage-auth-user`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
+        body:JSON.stringify({action:'create',email:email.trim(),password:'avatel2026',full_name,role})
+      });
+      const authData=await authResp.json();
+      if(authData.auth_id){
+        await sb.from('employees').update({auth_id:authData.auth_id}).eq('id',inserted.id);
+      }
+    }catch(efErr){console.warn('Edge Function error al crear auth user:',efErr);}
+    // Auto-crear saldo de vacaciones para operadores nuevos
     if(role==='operator'&&inserted?.id){
       await sb.from('vacation_balance').insert({employee_id:inserted.id,year:2026});
     }
@@ -1760,10 +1774,22 @@ function AdminView(){
               <button className="btn btn-primary" disabled={empSaving} onClick={async()=>{
                 setEmpSaving(true);
                 const upd={full_name:editingEmp.full_name,short_name:editingEmp.short_name,email:editingEmp.email||null,username:editingEmp.username,role:editingEmp.role,active:editingEmp.active};
-                if(editingEmp.newPassword&&editingEmp.newPassword.length>=4)upd.password=editingEmp.newPassword;
                 const {error}=await sb.from('employees').update(upd).eq('id',editingEmp.id);
                 if(error){alert('Error al guardar: '+error.message);}
-                else{fetchEmployees().then(data=>{setEmpList(data||[]);});setEditingEmp(null);}
+                else{
+                  // Resetear contraseña en Auth si se proporcionó una nueva
+                  if(editingEmp.newPassword&&editingEmp.newPassword.length>=6&&editingEmp.auth_id){
+                    try{
+                      const session=(await sb.auth.getSession()).data.session;
+                      await fetch(`${EF_URL}/manage-auth-user`,{
+                        method:'POST',
+                        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
+                        body:JSON.stringify({action:'update_password',auth_id:editingEmp.auth_id,password:editingEmp.newPassword})
+                      });
+                    }catch(efErr){console.warn('Edge Function error al resetear contraseña:',efErr);}
+                  }
+                  fetchEmployees().then(data=>{setEmpList(data||[]);});setEditingEmp(null);
+                }
                 setEmpSaving(false);
               }}>{empSaving?'Guardando…':'Guardar cambios'}</button>
             </div>
@@ -1812,25 +1838,85 @@ function AdminView(){
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────────
 function LoginView({onLogin}){
-  const [username,setUsername]=useState('');
+  const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
+  const [countdown,setCountdown]=useState(0);
+  const FAIL_KEY='noc_login_fails';
+  const MAX_FAILS=5;
+  const LOCKOUT_S=30;
+
+  // Restaurar bloqueo si existe al montar
+  useEffect(()=>{
+    try{
+      const s=JSON.parse(localStorage.getItem(FAIL_KEY)||'{}');
+      if(s.until&&Date.now()<s.until){
+        const rem=Math.ceil((s.until-Date.now())/1000);
+        setCountdown(rem);
+      }
+    }catch(ex){}
+  },[]);
+
+  // Countdown timer
+  useEffect(()=>{
+    if(countdown<=0)return;
+    const iv=setInterval(()=>{
+      setCountdown(c=>{
+        if(c<=1){clearInterval(iv);try{localStorage.removeItem(FAIL_KEY);}catch(ex){}return 0;}
+        return c-1;
+      });
+    },1000);
+    return()=>clearInterval(iv);
+  },[countdown]);
+
   const handleLogin=async(e)=>{
     e.preventDefault();
-    if(!username.trim()||!password){setError('Introduce usuario y contraseña');return;}
+    if(countdown>0){setError(`Acceso bloqueado. Espera ${countdown}s`);return;}
+    if(!email.trim()||!password){setError('Introduce email y contraseña');return;}
     setLoading(true);setError('');
-    const {data:user,error:err}=await sb.from('employees')
-      .select('*')
-      .eq('username',username.trim().toLowerCase())
-      .eq('password',password)
-      .eq('active',true)
-      .maybeSingle();
+
+    // Autenticar con Supabase Auth
+    const {data:authData,error:authErr}=await sb.auth.signInWithPassword({
+      email:email.trim().toLowerCase(),password
+    });
+
+    if(authErr||!authData?.user){
+      setLoading(false);
+      try{
+        const s=JSON.parse(localStorage.getItem(FAIL_KEY)||'{}');
+        const fails=(s.fails||0)+1;
+        if(fails>=MAX_FAILS){
+          const until=Date.now()+LOCKOUT_S*1000;
+          localStorage.setItem(FAIL_KEY,JSON.stringify({fails,until}));
+          setCountdown(LOCKOUT_S);
+          setError(`Demasiados intentos fallidos. Acceso bloqueado ${LOCKOUT_S}s.`);
+        }else{
+          localStorage.setItem(FAIL_KEY,JSON.stringify({fails}));
+          setError(`Credenciales incorrectas (${fails}/${MAX_FAILS} intentos)`);
+        }
+      }catch(ex){setError('Credenciales incorrectas');}
+      return;
+    }
+
+    // Obtener registro de empleado vinculado
+    const {data:user}=await sb.from('employees').select('*')
+      .eq('auth_id',authData.user.id).eq('active',true).maybeSingle();
     setLoading(false);
-    if(err||!user){setError('Usuario o contraseña incorrectos');return;}
-    try{localStorage.setItem('noc_user',JSON.stringify({id:user.id,full_name:user.full_name,short_name:user.short_name,role:user.role,username:user.username,photo_url:user.photo_url||null}));}catch(e){}
+
+    if(!user){
+      await sb.auth.signOut();
+      setError('Cuenta no encontrada. Contacta con el Responsable NOC.');
+      return;
+    }
+
+    // Limpiar intentos fallidos
+    try{localStorage.removeItem(FAIL_KEY);}catch(ex){}
+    try{localStorage.setItem('noc_user',JSON.stringify({id:user.id,full_name:user.full_name,short_name:user.short_name,role:user.role,username:user.username,email:user.email||null,photo_url:user.photo_url||null}));}catch(ex){}
     onLogin(user);
   };
+
+  const locked=countdown>0;
   return(
     <div className="login-wrap">
       <div className="login-box">
@@ -1840,15 +1926,16 @@ function LoginView({onLogin}){
           <p>Avatel Telecom · Network Operations Center</p>
         </div>
         {error&&<div className="login-err">⚠ {error}</div>}
+        {locked&&<div style={{textAlign:'center',fontSize:12,color:'var(--amber)',marginBottom:10}}>🔒 Bloqueado — {countdown}s</div>}
         <form onSubmit={handleLogin}>
-          <div className="fg"><label className="fl">Usuario</label>
-            <input className="fi" type="text" placeholder="nombre.apellido" value={username} onChange={e=>setUsername(e.target.value)} autoFocus autoComplete="username"/>
+          <div className="fg"><label className="fl">Correo electrónico</label>
+            <input className="fi" type="email" placeholder="usuario@avatel.es" value={email} onChange={e=>setEmail(e.target.value)} autoFocus autoComplete="email" disabled={locked}/>
           </div>
           <div className="fg"><label className="fl">Contraseña</label>
-            <input className="fi" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password"/>
+            <input className="fi" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" disabled={locked}/>
           </div>
-          <button type="submit" className="btn btn-primary" style={{width:'100%',padding:'11px',marginTop:8,fontSize:14,fontWeight:600}} disabled={loading}>
-            {loading?'Accediendo…':'Entrar'}
+          <button type="submit" className="btn btn-primary" style={{width:'100%',padding:'11px',marginTop:8,fontSize:14,fontWeight:600}} disabled={loading||locked}>
+            {locked?`Bloqueado (${countdown}s)`:loading?'Accediendo…':'Entrar'}
           </button>
         </form>
         <div className="login-hint">¿Olvidaste tu contraseña? Contacta con el Responsable NOC</div>
@@ -2208,11 +2295,13 @@ function ProfileView({user,onUserUpdate}){
     setMsg(null);
     if(!oldPass||!newPass||!newPass2){setMsg({type:'err',text:'Completa todos los campos'});return;}
     if(newPass!==newPass2){setMsg({type:'err',text:'Las contraseñas nuevas no coinciden'});return;}
-    if(newPass.length<4){setMsg({type:'err',text:'La contraseña debe tener al menos 4 caracteres'});return;}
+    if(newPass.length<6){setMsg({type:'err',text:'La contraseña debe tener al menos 6 caracteres'});return;}
     setSaving(true);
-    const {data:check}=await sb.from('employees').select('id').eq('id',user.id).eq('password',oldPass).maybeSingle();
-    if(!check){setMsg({type:'err',text:'La contraseña actual no es correcta'});setSaving(false);return;}
-    const {error}=await sb.from('employees').update({password:newPass}).eq('id',user.id);
+    // Verificar contraseña actual re-autenticando
+    const {error:signErr}=await sb.auth.signInWithPassword({email:user.email||'',password:oldPass});
+    if(signErr){setMsg({type:'err',text:'La contraseña actual no es correcta'});setSaving(false);return;}
+    // Actualizar contraseña en Supabase Auth
+    const {error}=await sb.auth.updateUser({password:newPass});
     if(error)setMsg({type:'err',text:'Error al cambiar contraseña: '+error.message});
     else{setMsg({type:'ok',text:'Contraseña cambiada correctamente'});setOldPass('');setNewPass('');setNewPass2('');}
     setSaving(false);
@@ -2613,23 +2702,50 @@ function ResumenRRHH(){
 
 // ── APP ────────────────────────────────────────────────────────────────────────
 function App(){
-  // ── Auth state (persiste en localStorage) ─────────────────────────────────
-  const [currentUser,setCurrentUser]=useState(()=>{
-    try{const s=localStorage.getItem('noc_user');return s?JSON.parse(s):null;}catch(e){return null;}
-  });
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const [currentUser,setCurrentUser]=useState(null);
+  const [authChecked,setAuthChecked]=useState(false);
   const [page,setPage]=useState('today');
   const [adminOpen,setAdminOpen]=useState(true);
+
+  // Verificar sesión Supabase Auth en cada arranque
+  useEffect(()=>{
+    sb.auth.getSession().then(async({data:{session}})=>{
+      if(session?.user){
+        const {data:emp}=await sb.from('employees').select('*')
+          .eq('auth_id',session.user.id).eq('active',true).maybeSingle();
+        if(emp){
+          setCurrentUser(emp);
+          try{localStorage.setItem('noc_user',JSON.stringify({id:emp.id,full_name:emp.full_name,short_name:emp.short_name,role:emp.role,username:emp.username,email:emp.email||null,photo_url:emp.photo_url||null}));}catch(ex){}
+        }else{
+          await sb.auth.signOut();
+          try{localStorage.removeItem('noc_user');}catch(ex){}
+        }
+      }else{
+        try{localStorage.removeItem('noc_user');}catch(ex){}
+      }
+      setAuthChecked(true);
+    });
+  },[]);
 
   const isAdmin=currentUser&&(currentUser.role==='admin'||currentUser.role==='manager'||currentUser.role==='coordinator');
   const isOperator=currentUser&&(currentUser.role==='operator'||currentUser.role==='staff');
 
-  // ── Si no hay sesión → pantalla de login ───────────────────────────────────
+  // ── Pantalla de carga mientras verifica Auth ──────────────────────────────
+  if(!authChecked) return(
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)',color:'var(--text3)',fontSize:14,flexDirection:'column',gap:12}}>
+      <div style={{fontSize:28}}>📡</div><div>Verificando sesión…</div>
+    </div>
+  );
+
+  // ── Si no hay sesión → pantalla de login ─────────────────────────────────
   if(!currentUser) return <LoginView onLogin={user=>{
     setCurrentUser(user);
-    setPage(isAdmin?'today':'opdashboard');
+    setPage(user.role==='admin'||user.role==='manager'?'today':'opdashboard');
   }}/>;
 
-  const handleLogout=()=>{
+  const handleLogout=async()=>{
+    await sb.auth.signOut();
     try{localStorage.removeItem('noc_user');}catch(e){}
     setCurrentUser(null);
     setPage('today');
@@ -2720,7 +2836,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.7 — fix: TeamView refresco tras edición directa en calendario</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.8 — Sprint 1: Supabase Auth + rate limiting login</div>
         </div>
       </div>
 
