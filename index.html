@@ -195,6 +195,34 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .sidebar-user-role{font-size:10px;color:var(--text3);text-transform:capitalize}
 .sidebar-user-actions{display:flex;gap:6px}
 .sidebar-user-actions .nav-item{flex:1;font-size:11px;padding:5px 8px;margin:0;border-radius:var(--radius-sm)}
+/* ── LIGHT THEME ─────────────────────────────────────────────────────────── */
+body.light-theme{
+  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--bg4:#e3e7f2;
+  --border:#d0d4e8;--border2:#b8bee0;
+  --text:#1a2040;--text2:#3a456e;--text3:#6e7a96;
+  --blue2:#dce8ff;--blue3:#c8dcff;
+  --green2:#d0f0dc;--red2:#fde0e0;--amber2:#fef3d0;
+  --orange3:#fde8d8;
+  --weekend-bg:rgba(79,142,247,0.05);--weekend-border:rgba(79,142,247,0.2);
+  --festivo-bg:rgba(247,184,79,0.08);--festivo-border:rgba(247,184,79,0.3);
+}
+body.light-theme .cal-table td.name-cell{background:var(--bg2)}
+body.light-theme .login-box{box-shadow:0 8px 30px rgba(0,0,0,.1)}
+/* ── NOTIFICATION BELL ───────────────────────────────────────────────────── */
+.notif-wrap{position:relative;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:14px;transition:all .15s}
+.notif-wrap:hover{background:var(--bg4);color:var(--text)}
+.notif-badge{position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;background:var(--red);color:#fff;border-radius:7px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.notif-panel{position:absolute;top:38px;right:0;width:280px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:200;overflow:hidden}
+.notif-panel-hdr{padding:10px 14px;font-size:12px;font-weight:600;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.notif-item{padding:10px 14px;border-bottom:1px solid rgba(42,51,80,.2);font-size:12px}
+.notif-item:last-child{border-bottom:none}
+.notif-item-time{font-size:10px;color:var(--text3);margin-top:3px}
+/* ── PRÓXIMOS 7 DÍAS ─────────────────────────────────────────────────────── */
+.next7-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px}
+.next7-day{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)}
+.next7-day.is-today{background:var(--blue3);border-color:var(--blue)}
+.next7-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.next7-num{font-size:12px;font-weight:600;color:var(--text)}
 </style>
 </head>
 <body>
@@ -207,6 +235,16 @@ const SUPABASE_URL = 'https://naywdwsjwtbagbzrncke.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5heXdkd3Nqd3RiYWdienJuY2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTM4MTAsImV4cCI6MjA4OTc2OTgxMH0.hoLOn9py6G99Bivp_NQgmL8g7H3XnuAryz6RkQ3UE6g';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const EF_URL = `${SUPABASE_URL}/functions/v1`; // Edge Functions base URL
+
+// ── AUDIT LOG ─────────────────────────────────────────────────────────────────
+async function logAudit(action, details={}, actorId=null){
+  try{
+    await sb.from('audit_log').insert({action,details,actor_id:actorId,created_at:new Date().toISOString()});
+  }catch(e){/* silently ignore audit errors */}
+}
+
+// ── TEMA (dark/light) — aplicar guardado al arrancar ─────────────────────────
+(()=>{try{const t=localStorage.getItem('noc_theme');if(t==='light')document.body.className='light-theme';}catch(e){}})();
 
 // ── DB HELPERS ────────────────────────────────────────────────────────────────
 // Cache to avoid re-fetching same month
@@ -497,6 +535,9 @@ async function approveRequest(req) {
     .eq('id', req.id);
   if (eStatus) errors.push(`Status error: ${eStatus.message}`);
 
+  // Audit log
+  await logAudit('request_approved', {request_id:req.id, type:req.type, requester_id:req.requester_id});
+
   return errors;
 }
 
@@ -504,6 +545,8 @@ async function rejectRequest(reqId, notes = '') {
   const { error } = await sb.from('shift_requests')
     .update({ status: 'rejected', resolved_at: new Date().toISOString(), resolver_notes: notes })
     .eq('id', reqId);
+  // Audit log
+  await logAudit('request_rejected', {request_id:reqId, notes});
   return error;
 }
 
@@ -645,37 +688,13 @@ function TodayView(){
           </div>
         ))}
       </div>
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-header"><span className="card-title">Cobertura del turno</span></div>
-          {[{k:'M',l:'Mañana',v:w.M.length,m:mr.M},{k:'T',l:'Tarde',v:w.T.length,m:mr.T},{k:'N',l:'Noche',v:w.N.length,m:mr.N}].map(({k,l,v,m})=>{
-            const ok=v>=m,warn=v===m-1;
-            const color=ok?'var(--green)':warn?'var(--amber)':'var(--red)';
-            const pct=m>0?Math.min((v/m)*100,100):100;
-            return(
-              <div key={k} style={{marginBottom:14}}>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
-                  <Bdg s={k}/>
-                  <span style={{fontSize:12,flex:1,color:'var(--text2)'}}>{l}</span>
-                  <span style={{fontSize:13,fontWeight:700,color}}>{v}</span>
-                  <span style={{fontSize:11,color:'var(--text3)'}}>/ {m} mín.</span>
-                  <span style={{fontSize:13}}>{ok?'✓':'⚠'}</span>
-                </div>
-                <div style={{height:5,borderRadius:3,background:'var(--bg4)'}}>
-                  <div style={{height:'100%',borderRadius:3,background:color,width:`${pct}%`,transition:'width .4s'}}/>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="card">
-          <div className="card-header"><span className="card-title">Ausencias hoy</span></div>
-          {absent.length===0?<div style={{fontSize:12,color:'var(--text3)'}}>Sin ausencias registradas</div>
-          :absent.map(e=>{const ek=empShortMap[e]||EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return(
-            <div key={e} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(42,51,80,.3)'}}>
-              <span>{e}</span><span className={`pill ${s==='B'?'pill-bad':'pill-warn'}`} style={{marginLeft:'auto'}}>{SL[s]||''}</span>
-            </div>);})}
-        </div>
+      <div className="card">
+        <div className="card-header"><span className="card-title">Ausencias hoy</span></div>
+        {absent.length===0?<div style={{fontSize:12,color:'var(--text3)'}}>Sin ausencias registradas</div>
+        :absent.map(e=>{const ek=empShortMap[e]||EMP_SHORT[e]||e;const s=(md[ek]||[])[d-1];return(
+          <div key={e} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(42,51,80,.3)'}}>
+            <span>{e}</span><span className={`pill ${s==='B'?'pill-bad':'pill-warn'}`} style={{marginLeft:'auto'}}>{SL[s]||''}</span>
+          </div>);})}
       </div>
     </div>
   );
@@ -816,12 +835,17 @@ function CalendarView({isAdmin=true}){
                 ))}
               </tr>
               <tr style={{background:'var(--bg4)'}}>
-                <td className="name-cell" style={{fontSize:10,color:'var(--text3)',padding:'2px 10px'}}>Cobertura</td>
+                <td className="name-cell" style={{fontSize:10,color:'var(--text3)',padding:'2px 10px'}}>Cob. M/T/N</td>
                 {cov.map(({m,t,n},i)=>{
-                  const info=di[i],mr=info.we?covMins.we:covMins.wk,all=m>=mr.M&&t>=mr.T&&n>=mr.N;
+                  const info=di[i],mr=info.we?covMins.we:covMins.wk;
+                  const okM=m>=mr.M,okT=t>=mr.T,okN=n>=mr.N,all=okM&&okT&&okN;
                   return(<td key={i} className={tdcls(info)} style={{padding:'2px 1px'}}>
-                    <div style={{width:22,height:22,borderRadius:3,background:all?'rgba(79,201,122,.2)':'rgba(247,95,95,.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>
-                      <span style={{fontSize:9,color:all?'var(--green)':'var(--red)',fontWeight:700}}>{all?'✓':'!'}</span>
+                    <div title={`M:${m}/${mr.M} T:${t}/${mr.T} N:${n}/${mr.N}`}
+                      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:0,margin:'0 auto',padding:'2px 0',
+                        background:all?'rgba(79,201,122,.1)':'rgba(247,95,95,.08)',borderRadius:3}}>
+                      <span style={{fontSize:7,fontFamily:'var(--mono)',color:okM?'var(--green)':'var(--red)',lineHeight:1.4,fontWeight:600}}>{m}/{mr.M}</span>
+                      <span style={{fontSize:7,fontFamily:'var(--mono)',color:okT?'var(--green)':'var(--red)',lineHeight:1.4,fontWeight:600}}>{t}/{mr.T}</span>
+                      <span style={{fontSize:7,fontFamily:'var(--mono)',color:okN?'var(--green)':'var(--red)',lineHeight:1.4,fontWeight:600}}>{n}/{mr.N}</span>
                     </div>
                   </td>);
                 })}
@@ -1030,7 +1054,7 @@ function TeamView(){
         {statsLoading&&<div style={{padding:'20px',textAlign:'center',color:'var(--text3)',fontSize:12}}>Cargando estadísticas...</div>}
         {!statsLoading&&<div style={{overflowX:'auto'}}>
           <table className="emp-table">
-            <thead><tr><th>Operador</th><th>Horas ({HMAX}h)</th><th>Jornadas ({JMAX})</th><th>M / T / N</th><th>Vacac. usadas</th><th>Vacac. restantes</th><th>Bajas</th><th>H.extras</th><th>Turno hoy</th><th>Situación</th></tr></thead>
+            <thead><tr><th>Operador</th><th>Horas ({HMAX}h)</th><th>Jornadas ({JMAX})</th><th>M / T / N</th><th>Vacac. usadas</th><th>Vacac. restantes</th><th>Bajas</th><th>H.extras</th><th>Estado hoy</th></tr></thead>
             <tbody>
               {ed.map(({emp,r,h,j,eh,hst,vacUsed,vacRemaining})=>{
                 const noData=h===0&&j===0;
@@ -1056,8 +1080,7 @@ function TeamView(){
                   <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:vacRemaining===null?'var(--text3)':vacRemaining>=10?'var(--green)':vacRemaining>=5?'var(--amber)':'var(--red)'}}>{vacRemaining===null?'–':vacRemaining}</span></td>
                   <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:r.B>0?'var(--red)':'var(--text2)'}}>{r.B||0}</span></td>
                   <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:ec}}>{r.D||0} ({eh}h)</span></td>
-                  <td>{situ?<span style={{opacity:.4,fontSize:11,color:'var(--text3)'}}>–</span>:<span className={`pill ${turno.cls}`}>{turno.label}</span>}</td>
-                  <td>{situ?<span className={`pill ${situ.cls}`}>{situ.label}</span>:<span style={{fontSize:11,color:'var(--text3)'}}>–</span>}</td>
+                  <td>{situ?<span className={`pill ${situ.cls}`}>{situ.label}</span>:<span className={`pill ${turno.cls}`}>{turno.label}</span>}</td>
                 </tr>);
               })}
             </tbody>
@@ -1899,6 +1922,7 @@ function LoginView({onLogin}){
     // Limpiar intentos fallidos
     try{localStorage.removeItem(FAIL_KEY);}catch(ex){}
     try{localStorage.setItem('noc_user',JSON.stringify({id:user.id,full_name:user.full_name,short_name:user.short_name,role:user.role,username:user.username,email:user.email||null,photo_url:user.photo_url||null}));}catch(ex){}
+    await logAudit('login',{username:user.username,role:user.role},user.id);
     onLogin(user);
   };
 
@@ -1949,6 +1973,8 @@ function OperatorDashboard({user}){
   const [myReqs,setMyReqs]=useState([]);
   const [loading,setLoading]=useState(true);
   const [modal,setModal]=useState(null);
+  const [notifications,setNotifications]=useState([]);
+  const [showNotifs,setShowNotifs]=useState(false);
 
   useEffect(()=>{
     async function loadYear(){
@@ -1988,6 +2014,36 @@ function OperatorDashboard({user}){
     return{m,t,n,d,a,jornadas:m+t+n+a,horas:(m+t+n+a)*8};
   },[allShifts]);
 
+  // Realtime: notificaciones cuando cambia estado de mis solicitudes
+  useEffect(()=>{
+    const ch=sb.channel('op-reqs-'+user.id)
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'shift_requests',filter:`requester_id=eq.${user.id}`},(payload)=>{
+        const r=payload.new;
+        if(r.status==='approved'||r.status==='rejected'){
+          const tipo=r.request_type==='vacation'?'Vacaciones':r.request_type==='swap'?'Cambio de turno':'Asuntos propios';
+          const texto=`${tipo} ${r.status==='approved'?'aprobada ✓':'rechazada ✗'}`;
+          setNotifications(p=>[{id:Date.now(),text:texto,status:r.status,ts:new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})},...p.slice(0,9)]);
+          // Refrescar lista de solicitudes
+          sb.from('shift_requests').select('*').eq('requester_id',user.id).order('created_at',{ascending:false}).limit(20).then(({data})=>{ if(data)setMyReqs(data); });
+        }
+      })
+      .subscribe();
+    return()=>sb.removeChannel(ch);
+  },[user.id]);
+
+  // Próximos 7 días
+  const next7=useMemo(()=>{
+    const res=[];
+    const base=new Date();
+    for(let i=0;i<7;i++){
+      const d=new Date(base);d.setDate(base.getDate()+i);
+      const ds=d.toISOString().split('T')[0];
+      const shift=allShifts.find(s=>s.shift_date===ds);
+      res.push({date:d,dateStr:ds,shift:shift?.shift_type||'',isToday:ds===todayStr});
+    }
+    return res;
+  },[allShifts,todayStr]);
+
   const pending=myReqs.filter(r=>r.status==='pending');
   const days=MD[selMonth];
   const di=useMemo(()=>Array.from({length:days},(_,i)=>({
@@ -2001,8 +2057,32 @@ function OperatorDashboard({user}){
   const reqLabel=t=>t==='swap'?{l:'Cambio',bg:'var(--blue3)',c:'var(--blue)'}:t==='personal_day'?{l:'Asuntos propios',bg:'var(--orange3)',c:'var(--orange)'}:{l:'Vacaciones',bg:'var(--green2)',c:'var(--green)'};
 
   const vacColor=myBalance?(myBalance.days_remaining>=10?'var(--green)':myBalance.days_remaining>=5?'var(--amber)':'var(--red)'):'var(--text3)';
+  const shiftLabel=s=>({M:'Mañana',T:'Tarde',N:'Noche',V:'Vacaciones',B:'Baja',D:'Guardia',O:'Onboarding',P:'Presencia'}[s]||'Libre');
   return(
     <div>
+      {/* Notificaciones bell */}
+      {notifications.length>0&&(
+        <div style={{position:'fixed',top:16,right:16,zIndex:300}}>
+          <div className="notif-wrap" onClick={()=>setShowNotifs(p=>!p)}>
+            🔔
+            {notifications.length>0&&<span className="notif-badge">{notifications.length}</span>}
+          </div>
+          {showNotifs&&(
+            <div className="notif-panel">
+              <div className="notif-panel-hdr">
+                <span>Notificaciones</span>
+                <button style={{fontSize:10,color:'var(--text3)',background:'none',border:'none',cursor:'pointer'}} onClick={()=>{setNotifications([]);setShowNotifs(false);}}>Limpiar</button>
+              </div>
+              {notifications.map(n=>(
+                <div key={n.id} className="notif-item">
+                  <div style={{color:n.status==='approved'?'var(--green)':'var(--red)'}}>{n.text}</div>
+                  <div className="notif-item-time">{n.ts}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {/* Resumen anual — tarjeta unificada */}
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header"><span className="card-title">Resumen anual 2026</span></div>
@@ -2042,6 +2122,23 @@ function OperatorDashboard({user}){
         </div>
       </div>
 
+
+      {/* Próximos 7 días */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header" style={{marginBottom:12}}>
+          <span className="card-title">Próximos 7 días</span>
+        </div>
+        <div className="next7-grid">
+          {next7.map(({date,dateStr,shift,isToday})=>(
+            <div key={dateStr} className={`next7-day${isToday?' is-today':''}`}>
+              <span className="next7-label">{date.toLocaleDateString('es-ES',{weekday:'short'}).toUpperCase().slice(0,3)}</span>
+              <span className="next7-num">{date.getDate()}</span>
+              {shift?<Bdg s={shift}/>:<span style={{fontSize:9,color:'var(--text3)'}}>Libre</span>}
+              {shift&&<span style={{fontSize:9,color:'var(--text3)',textAlign:'center',lineHeight:1.2}}>{shiftLabel(shift)}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Resumen del mes */}
       <div className="card" style={{marginBottom:16,padding:0,overflow:'hidden'}}>
@@ -2143,6 +2240,7 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
   const [form,setForm]=useState({date1:'',date2:'',targetId:'',reason:''});
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState('');
+  const [confirming,setConfirming]=useState(false);
   useEffect(()=>{fetchEmployees().then(d=>setEmps(d||[]));},[]);
 
   const validateAsuntos=(dateStr)=>{
@@ -2160,88 +2258,163 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
     return null;
   };
 
-  const save=async()=>{
-    setErr('');setSaving(true);
+  const validate=()=>{
+    setErr('');
     if(modal==='cambio'){
-      if(!form.date1||!form.date2||!form.targetId){setErr('Completa todos los campos');setSaving(false);return;}
+      if(!form.date1||!form.date2||!form.targetId){setErr('Completa todos los campos');return false;}
+    }else if(modal==='asuntos'){
+      if(!form.date1){setErr('Selecciona una fecha');return false;}
+      const valErr=validateAsuntos(form.date1);
+      if(valErr){setErr(valErr);return false;}
+    }else{
+      if(!form.date1||!form.date2){setErr('Indica fechas de inicio y fin');return false;}
+      if(form.date2<form.date1){setErr('La fecha fin debe ser posterior al inicio');return false;}
+    }
+    return true;
+  };
+
+  const handleSubmitClick=()=>{
+    if(validate())setConfirming(true);
+  };
+
+  const save=async()=>{
+    setSaving(true);
+    let reqType='';
+    if(modal==='cambio'){
+      reqType='swap';
       await sb.from('shift_requests').insert({request_type:'swap',requester_id:userId,requester_date:form.date1,target_date:form.date2,target_id:form.targetId,status:'pending',notes:form.reason||null});
     }else if(modal==='asuntos'){
-      const valErr=validateAsuntos(form.date1);
-      if(!form.date1){setErr('Selecciona una fecha');setSaving(false);return;}
-      if(valErr){setErr(valErr);setSaving(false);return;}
+      reqType='personal_day';
       const {data:existing}=await sb.from('shift_requests').select('id').eq('requester_id',userId).eq('request_type','personal_day').in('status',['pending','approved']).limit(1);
-      if(existing&&existing.length>0){setErr('Ya tienes una solicitud de asuntos propios este año (solo se permite 1)');setSaving(false);return;}
+      if(existing&&existing.length>0){setErr('Ya tienes una solicitud de asuntos propios este año (solo se permite 1)');setSaving(false);setConfirming(false);return;}
       await sb.from('shift_requests').insert({request_type:'personal_day',requester_id:userId,requester_date:form.date1,status:'pending',notes:form.reason||null});
     }else{
-      if(!form.date1||!form.date2){setErr('Indica fechas de inicio y fin');setSaving(false);return;}
-      if(form.date2<form.date1){setErr('La fecha fin debe ser posterior al inicio');setSaving(false);return;}
+      reqType='vacation';
       await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:2026,status:'pending',notes:form.reason||null});
     }
+    await logAudit('request_created',{request_type:reqType,user:userName},userId);
     setSaving(false);onSaved();
   };
 
   const titles={cambio:'Solicitar cambio de turno',asuntos:'Solicitar día de asuntos propios',vacaciones:'Solicitar vacaciones'};
+
+  // Resumen para la pantalla de confirmación
+  const getSummary=()=>{
+    if(modal==='cambio'){
+      const target=emps.find(e=>e.id===form.targetId);
+      return[
+        {l:'Tipo',v:'Cambio de turno'},
+        {l:'Cedes tu día',v:form.date1?new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
+        {l:'Trabajas el día',v:form.date2?new Date(form.date2+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
+        {l:'Con',v:target?.full_name||'—'},
+      ];
+    }if(modal==='asuntos'){
+      return[
+        {l:'Tipo',v:'Día de asuntos propios'},
+        {l:'Fecha',v:form.date1?new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
+      ];
+    }
+    const dias=form.date1&&form.date2?Math.round((new Date(form.date2)-new Date(form.date1))/86400000)+1:0;
+    return[
+      {l:'Tipo',v:'Vacaciones'},
+      {l:'Inicio',v:form.date1?new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
+      {l:'Fin',v:form.date2?new Date(form.date2+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
+      {l:'Días solicitados',v:`${dias} día${dias!==1?'s':''}`},
+    ];
+  };
+
   return(
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={()=>!confirming&&onClose()}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="modal-title">{titles[modal]||''}</div>
-        <div className="modal-sub">La solicitud quedará pendiente de aprobación</div>
-        {err&&<div className="login-err">{err}</div>}
-        {modal==='cambio'?(
+        {!confirming?(
           <>
-            <div className="fg"><label className="fl">Tu día (el que cedes)</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
-            <div className="fg"><label className="fl">Día que quieres trabajar</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
-            <div className="fg"><label className="fl">Con quién cambias</label>
-              <select className="fs" value={form.targetId} onChange={e=>setForm(p=>({...p,targetId:e.target.value}))}>
-                <option value="">Seleccionar compañero...</option>
-                {emps.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
-              </select>
-            </div>
-          </>
-        ):modal==='asuntos'?(
-          <>
-            <div className="alert alert-info" style={{marginBottom:14,fontSize:11}}>
-              <span>ℹ️</span>
-              <span>Solo puedes solicitar 1 día al año · No puede ser lunes ni viernes · No puede ser adyacente a un festivo</span>
-            </div>
-            <div className="fg">
-              <label className="fl">Fecha del día de asuntos propios</label>
-              <input className="fi" type="date" value={form.date1} onChange={e=>{setForm(p=>({...p,date1:e.target.value}));setErr('');}}/>
-            </div>
-            {form.date1&&!validateAsuntos(form.date1)&&(
-              <div className="alert alert-ok" style={{fontSize:11,marginBottom:0}}>
-                <span>✓</span><span>Fecha válida — {new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</span>
-              </div>
+            <div className="modal-title">{titles[modal]||''}</div>
+            <div className="modal-sub">La solicitud quedará pendiente de aprobación</div>
+            {err&&<div className="login-err">{err}</div>}
+            {modal==='cambio'?(
+              <>
+                <div className="fg"><label className="fl">Tu día (el que cedes)</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
+                <div className="fg"><label className="fl">Día que quieres trabajar</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
+                <div className="fg"><label className="fl">Con quién cambias</label>
+                  <select className="fs" value={form.targetId} onChange={e=>setForm(p=>({...p,targetId:e.target.value}))}>
+                    <option value="">Seleccionar compañero...</option>
+                    {emps.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
+                  </select>
+                </div>
+              </>
+            ):modal==='asuntos'?(
+              <>
+                <div className="alert alert-info" style={{marginBottom:14,fontSize:11}}>
+                  <span>ℹ️</span>
+                  <span>Solo puedes solicitar 1 día al año · No puede ser lunes ni viernes · No puede ser adyacente a un festivo</span>
+                </div>
+                <div className="fg">
+                  <label className="fl">Fecha del día de asuntos propios</label>
+                  <input className="fi" type="date" value={form.date1} onChange={e=>{setForm(p=>({...p,date1:e.target.value}));setErr('');}}/>
+                </div>
+                {form.date1&&!validateAsuntos(form.date1)&&(
+                  <div className="alert alert-ok" style={{fontSize:11,marginBottom:0}}>
+                    <span>✓</span><span>Fecha válida — {new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</span>
+                  </div>
+                )}
+                {form.date1&&validateAsuntos(form.date1)&&(
+                  <div className="alert alert-warn" style={{fontSize:11,marginBottom:0}}>
+                    <span>⚠</span><span>{validateAsuntos(form.date1)}</span>
+                  </div>
+                )}
+              </>
+            ):(
+              <>
+                <div className="frow">
+                  <div className="fg"><label className="fl">Fecha inicio</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
+                  <div className="fg"><label className="fl">Fecha fin</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
+                </div>
+                {form.date1&&form.date2&&form.date2>=form.date1&&(
+                  <div className="alert alert-info" style={{fontSize:11,marginBottom:0}}>
+                    <span>📅</span><span>{Math.round((new Date(form.date2)-new Date(form.date1))/86400000)+1} día(s) de vacaciones</span>
+                  </div>
+                )}
+              </>
             )}
-            {form.date1&&validateAsuntos(form.date1)&&(
-              <div className="alert alert-warn" style={{fontSize:11,marginBottom:0}}>
-                <span>⚠</span><span>{validateAsuntos(form.date1)}</span>
-              </div>
-            )}
+            <div className="fg" style={{marginTop:10}}>
+              <label className="fl">Motivo de la solicitud</label>
+              <textarea className="fi" placeholder="Indica el motivo de tu solicitud (opcional)..." rows={3}
+                style={{resize:'vertical',minHeight:60,fontFamily:'inherit',lineHeight:1.4}}
+                value={form.reason} onChange={e=>setForm(p=>({...p,reason:e.target.value}))}/>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}>
+              <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleSubmitClick}>Revisar solicitud →</button>
+            </div>
           </>
         ):(
           <>
-            <div className="frow">
-              <div className="fg"><label className="fl">Fecha inicio</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
-              <div className="fg"><label className="fl">Fecha fin</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
+            <div className="modal-title">Confirmar solicitud</div>
+            <div className="modal-sub">Revisa los detalles antes de enviar</div>
+            {err&&<div className="login-err">{err}</div>}
+            <div className="card" style={{background:'var(--bg3)',marginBottom:16,padding:'14px 16px'}}>
+              {getSummary().map(({l,v})=>(
+                <div key={l} style={{display:'flex',gap:12,padding:'5px 0',borderBottom:'1px solid rgba(42,51,80,.2)',fontSize:13}}>
+                  <span style={{color:'var(--text3)',minWidth:130}}>{l}</span>
+                  <span style={{fontWeight:500}}>{v}</span>
+                </div>
+              ))}
+              {form.reason&&(
+                <div style={{display:'flex',gap:12,padding:'5px 0',fontSize:13}}>
+                  <span style={{color:'var(--text3)',minWidth:130}}>Motivo</span>
+                  <span style={{fontStyle:'italic',color:'var(--text2)'}}>{form.reason}</span>
+                </div>
+              )}
             </div>
-            {form.date1&&form.date2&&form.date2>=form.date1&&(
-              <div className="alert alert-info" style={{fontSize:11,marginBottom:0}}>
-                <span>📅</span><span>{Math.round((new Date(form.date2)-new Date(form.date1))/86400000)+1} día(s) de vacaciones</span>
-              </div>
-            )}
+            <div className="alert alert-warn" style={{marginBottom:12}}>
+              <span>⏳</span><span>Una vez enviada, quedará pendiente de aprobación por el administrador</span>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={()=>setConfirming(false)} disabled={saving}>← Editar</button>
+              <button className="btn btn-primary" disabled={saving} onClick={save}>{saving?'Enviando…':'✓ Confirmar y enviar'}</button>
+            </div>
           </>
         )}
-        <div className="fg" style={{marginTop:10}}>
-          <label className="fl">Motivo de la solicitud</label>
-          <textarea className="fi" placeholder="Indica el motivo de tu solicitud (opcional)..." rows={3}
-            style={{resize:'vertical',minHeight:60,fontFamily:'inherit',lineHeight:1.4}}
-            value={form.reason} onChange={e=>setForm(p=>({...p,reason:e.target.value}))}/>
-        </div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}>
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" disabled={saving} onClick={save}>{saving?'Enviando…':'Enviar solicitud'}</button>
-        </div>
       </div>
     </div>
   );
@@ -2257,7 +2430,15 @@ function ProfileView({user,onUserUpdate}){
   const [newPass2,setNewPass2]=useState('');
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState(null); // {type:'ok'|'err', text}
+  const [theme,setTheme]=useState(()=>localStorage.getItem('noc_theme')||'dark');
   const initials=(user.full_name||user.short_name||'??').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+  const toggleTheme=()=>{
+    const next=theme==='dark'?'light':'dark';
+    setTheme(next);
+    try{localStorage.setItem('noc_theme',next);}catch(e){}
+    document.body.className=next==='light'?'light-theme':'';
+  };
 
   useEffect(()=>{
     sb.from('employees').select('dni,email,photo_url').eq('id',user.id).maybeSingle().then(({data})=>{
@@ -2327,7 +2508,7 @@ function ProfileView({user,onUserUpdate}){
       </div>
 
       {/* Cambio de contraseña */}
-      <div className="card">
+      <div className="card" style={{marginBottom:16}}>
         <div className="card-header"><span className="card-title">Cambiar contraseña</span></div>
         <div className="fg"><label className="fl">Contraseña actual</label>
           <input className="fi" type="password" placeholder="Tu contraseña actual" value={oldPass} onChange={e=>setOldPass(e.target.value)}/>
@@ -2339,6 +2520,20 @@ function ProfileView({user,onUserUpdate}){
           <input className="fi" type="password" placeholder="Repite la nueva contraseña" value={newPass2} onChange={e=>setNewPass2(e.target.value)}/>
         </div>
         <button className="btn btn-primary" disabled={saving} onClick={changePassword}>{saving?'Guardando…':'Cambiar contraseña'}</button>
+      </div>
+
+      {/* Preferencias de apariencia */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">Apariencia</span></div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>Tema de la interfaz</div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{theme==='dark'?'Tema oscuro activo':'Tema claro activo'}</div>
+          </div>
+          <button className="btn btn-ghost" onClick={toggleTheme} style={{display:'flex',alignItems:'center',gap:6,fontSize:13}}>
+            {theme==='dark'?'☀ Cambiar a claro':'🌙 Cambiar a oscuro'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2391,9 +2586,12 @@ function CalN2View(){
     const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%2];});return a;
   });
   const [filterMonth,setFilterMonth]=useState(-1);
+  const [pendingAssign,setPendingAssign]=useState(null); // {wn, person, week}
+  const [saving,setSaving]=useState(false);
 
   const weeks=filterMonth===-1?WEEKS_2026:WEEKS_2026.filter(w=>w.start.getMonth()===filterMonth||w.end.getMonth()===filterMonth);
   const assign=async(wn,person)=>{
+    setSaving(true);
     setAssignments(p=>({...p,[wn]:person}));
     await saveN2Assignment(wn, person);
     // Reload to sync summary counts
@@ -2403,6 +2601,8 @@ function CalN2View(){
       fresh.forEach(row=>{ if(row.employee?.short_name) a[row.week_number]=row.employee.short_name; });
       setAssignments(a);
     }
+    setPendingAssign(null);
+    setSaving(false);
   };
   const isCurrentWeek=(w)=>today>=w.start&&today<=w.end;
 
@@ -2469,8 +2669,8 @@ function CalN2View(){
                   <td style={{padding:'10px 14px'}}>
                     <div style={{display:'flex',gap:6}}>
                       {N2_MEMBERS.map(m=>(
-                        <button key={m} onClick={()=>assign(w.wn,m)}
-                          style={{padding:'4px 12px',borderRadius:5,border:'1px solid',fontSize:12,cursor:'pointer',transition:'all .15s',
+                        <button key={m} onClick={()=>assigned!==m&&setPendingAssign({wn:w.wn,person:m,week:w})}
+                          style={{padding:'4px 12px',borderRadius:5,border:'1px solid',fontSize:12,cursor:assigned===m?'default':'pointer',transition:'all .15s',
                             borderColor:assigned===m?'var(--orange)':'var(--border)',
                             background:assigned===m?'var(--orange3)':'var(--bg3)',
                             color:assigned===m?'var(--orange)':'var(--text2)',fontWeight:assigned===m?600:400}}>
@@ -2488,6 +2688,34 @@ function CalN2View(){
           </tbody>
         </table>
       </div>
+
+      {pendingAssign&&(
+        <div className="modal-overlay" onClick={()=>!saving&&setPendingAssign(null)}>
+          <div className="modal" style={{maxWidth:380}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Confirmar cambio de guardia</div>
+            <div className="modal-sub">Estás a punto de reasignar la guardia N2</div>
+            <div className="card" style={{background:'var(--bg3)',marginBottom:16}}>
+              <div style={{fontSize:12,color:'var(--text2)',marginBottom:6}}>Semana <strong>S{String(pendingAssign.wn).padStart(2,'0')}</strong></div>
+              <div style={{fontSize:12,color:'var(--text2)',marginBottom:6}}>
+                {pendingAssign.week.start.toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – {pendingAssign.week.end.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}
+                {weekHasFestivo(pendingAssign.week)&&<span style={{color:'var(--amber)',marginLeft:8}}>⚡ Semana con festivo</span>}
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13,marginTop:8}}>
+                <span style={{color:'var(--text3)'}}>Asignación actual:</span>
+                <span style={{color:'var(--orange)',fontWeight:600}}>{assignments[pendingAssign.wn]||'—'}</span>
+                <span style={{color:'var(--text3)',margin:'0 4px'}}>→</span>
+                <span style={{color:'var(--green)',fontWeight:600}}>{pendingAssign.person}</span>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={()=>setPendingAssign(null)} disabled={saving}>Cancelar</button>
+              <button className="btn btn-primary" onClick={()=>assign(pendingAssign.wn,pendingAssign.person)} disabled={saving}>
+                {saving?'Guardando…':'Confirmar cambio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2822,7 +3050,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.9 — Sprint 1-4: Auth, RLS, limpieza auditoría</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v4.0 — UX: dark mode, next7, notifs, confirmaciones</div>
         </div>
       </div>
 
