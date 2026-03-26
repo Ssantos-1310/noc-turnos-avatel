@@ -445,7 +445,6 @@ async function approveRequest(req) {
       const months = [reqDate?.substring(0,7), tgtDate?.substring(0,7)].filter(Boolean);
       months.forEach(mk => { delete shiftsCache[mk]; });
       window.__calendarVersion = (window.__calendarVersion||0) + 1;
-      console.log('[approveRequest] Swap aplicado. Meses invalidados:', months, 'calVer:', window.__calendarVersion);
     }
 
   } else if (req.type === 'vacaciones') {
@@ -480,7 +479,6 @@ async function approveRequest(req) {
       // Deduct from vacation balance
       const { error: ebal, newRemaining } = await deductVacationDays(reqEmpId, days.length);
       if (ebal) errors.push(`Balance error: ${ebal}`);
-      else console.log(`Vacaciones aprobadas: ${days.length} días descontados. Quedan: ${newRemaining}`);
 
       // Invalidate calendar cache — clear affected months
       const months = [...new Set(days.map(d => d.substring(0,7)))];
@@ -490,7 +488,6 @@ async function approveRequest(req) {
         Object.keys(shiftsCache).filter(k => k.startsWith(mk)).forEach(k => delete shiftsCache[k]);
       });
       window.__calendarVersion = (window.__calendarVersion||0) + 1;
-      console.log('[approveRequest] Vacaciones aplicadas. Meses invalidados:', months, 'calVer:', window.__calendarVersion);
     }
   }
 
@@ -1083,12 +1080,10 @@ function RequestsView(){
   // Named handlers — defined once in component scope, always see current closure
   const handleApprove = async (reqId) => {
     const r = reqsRef.current.find(x => x.id === reqId);
-    if(!r) { console.error('[handleApprove] r not found for id', reqId); return; }
-    console.log('[handleApprove] r=', JSON.stringify(r));
+    if(!r) return;
     setReqs(prev=>prev.filter(x=>x.id!==reqId));
     if(!reqId || !reqId.includes('-')) return;
     const empId = r.requester_id;
-    console.log('[handleApprove] type='+r.type+' empId='+empId?.substring(0,8)+' vacStart='+r.vacation_start);
     if(r.type==='vacaciones' && empId && r.vacation_start && r.vacation_end){
       const days=[]; let cur=r.vacation_start;
       while(cur<=r.vacation_end){
@@ -1096,17 +1091,13 @@ function RequestsView(){
         const dd=new Date(cur+'T12:00:00'); dd.setDate(dd.getDate()+1);
         cur=dd.toISOString().split('T')[0];
       }
-      console.log('[handleApprove vac] days=',days);
       for(const day of days){
-        const {error:ev}=await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});
-        if(ev) console.error('[handleApprove] upsert error',day,ev.message);
-        else console.log('[handleApprove] V ok',day);
+        await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});
       }
       const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
-      if(bal){ await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026); console.log('[handleApprove] balance ok, quedan',(bal.days_total-bal.days_used-days.length)); }
+      if(bal) await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
       [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
-      console.log('[handleApprove vac] DONE calVer='+window.__calendarVersion);
     } else if(r.type==='cambio' && empId && r.requester_date && r.target_date && r.target_id){
       const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
       const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
@@ -1116,17 +1107,12 @@ function RequestsView(){
       if(s1?.shift_type) await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
       [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
-      console.log('[handleApprove swap] DONE');
     } else if(r.type==='asuntos' && empId && r.requester_date){
       await sb.from('shifts').upsert({employee_id:empId,shift_date:r.requester_date,shift_type:'P'},{onConflict:'employee_id,shift_date'});
       delete shiftsCache[r.requester_date.substring(0,7)];
       window.__calendarVersion=(window.__calendarVersion||0)+1;
-      console.log('[handleApprove asuntos] DONE');
-    } else {
-      console.warn('[handleApprove] condición no cumplida: type='+r.type+' empId='+empId+' vacStart='+r.vacation_start+' vacEnd='+r.vacation_end);
     }
     await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',reqId);
-    console.log('[handleApprove] COMPLETADO');
   };
 
   const handleReject = async (reqId) => {
@@ -2347,7 +2333,7 @@ function ProfileView({user,onUserUpdate}){
           <input className="fi" type="password" placeholder="Tu contraseña actual" value={oldPass} onChange={e=>setOldPass(e.target.value)}/>
         </div>
         <div className="fg"><label className="fl">Nueva contraseña</label>
-          <input className="fi" type="password" placeholder="Mínimo 4 caracteres" value={newPass} onChange={e=>setNewPass(e.target.value)}/>
+          <input className="fi" type="password" placeholder="Mínimo 6 caracteres" value={newPass} onChange={e=>setNewPass(e.target.value)}/>
         </div>
         <div className="fg"><label className="fl">Repetir nueva contraseña</label>
           <input className="fi" type="password" placeholder="Repite la nueva contraseña" value={newPass2} onChange={e=>setNewPass2(e.target.value)}/>
@@ -2836,7 +2822,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.8 — Sprint 1: Supabase Auth + rate limiting login</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.9 — Sprint 1-4: Auth, RLS, limpieza auditoría</div>
         </div>
       </div>
 
