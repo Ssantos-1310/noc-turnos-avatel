@@ -758,7 +758,8 @@ function CalendarView({isAdmin=true}){
       return saveShift(empKey, date, batchShift);
     });
     await Promise.all(savePromises);
-    // Refresh month data
+    // Refresh month data + notificar a otros componentes (TeamView, TodayView)
+    window.__calendarVersion=(window.__calendarVersion||0)+1;
     const updated=await fetchShiftsForMonth(mi);
     setDbShifts(updated);
     setSel(null);setBatchModal(false);
@@ -908,7 +909,11 @@ function TeamView(){
   },[]);
 
   // Carga turno del mes actual (para columnas "Turno hoy" y "Situación")
-  useEffect(()=>{fetchShiftsForMonth(mi).then(setMd);},[mi]);
+  // Se refresca también cuando vacVer cambia (tras edición directa en calendario)
+  useEffect(()=>{
+    delete shiftsCache[`2026-${String(mi+1).padStart(2,'0')}`];
+    fetchShiftsForMonth(mi).then(setMd);
+  },[mi,vacVer]);
 
   // Polling de versión de calendario para refrescar tras aprobaciones
   const [vacVer,setVacVer]=React.useState(window.__calendarVersion||0);
@@ -2715,7 +2720,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.6 — fix: TeamView datos reales desde BD</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.7 — fix: TeamView refresco tras edición directa en calendario</div>
         </div>
       </div>
 
