@@ -197,17 +197,47 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .sidebar-user-actions .nav-item{flex:1;font-size:11px;padding:5px 8px;margin:0;border-radius:var(--radius-sm)}
 /* ── LIGHT THEME ─────────────────────────────────────────────────────────── */
 body.light-theme{
-  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef0f7;--bg4:#e3e7f2;
-  --border:#d0d4e8;--border2:#b8bee0;
-  --text:#1a2040;--text2:#3a456e;--text3:#6e7a96;
-  --blue2:#dce8ff;--blue3:#c8dcff;
-  --green2:#d0f0dc;--red2:#fde0e0;--amber2:#fef3d0;
-  --orange3:#fde8d8;
-  --weekend-bg:rgba(79,142,247,0.05);--weekend-border:rgba(79,142,247,0.2);
-  --festivo-bg:rgba(247,184,79,0.08);--festivo-border:rgba(247,184,79,0.3);
+  --bg:#f0f2f8;--bg2:#ffffff;--bg3:#f5f6fb;--bg4:#ebecf5;
+  --border:#dde0ef;--border2:#c8cde3;
+  --text:#1a2040;--text2:#3d4a72;--text3:#7a85a3;
+  --blue:#3b7ef5;--blue2:#e3ecfd;--blue3:#d4e5ff;
+  --teal:#00bfa5;
+  --green:#27ae60;--green2:#e6f7ed;
+  --red:#e53935;--red2:#fdecea;
+  --amber:#d97706;--amber2:#fef3d0;
+  --orange:#ea580c;--orange2:#fed7aa;--orange3:#fff0e6;
+  --weekend-bg:rgba(59,126,245,0.05);--weekend-border:rgba(59,126,245,0.18);
+  --festivo-bg:rgba(217,119,6,0.07);--festivo-border:rgba(217,119,6,0.3);
 }
-body.light-theme .cal-table td.name-cell{background:var(--bg2)}
+/* Light theme component overrides */
+body.light-theme .sidebar{background:#fff;border-right-color:var(--border)}
+body.light-theme .topbar{background:#fff;border-bottom-color:var(--border);box-shadow:0 1px 4px rgba(0,0,0,.06)}
+body.light-theme .card{box-shadow:0 1px 5px rgba(80,90,140,.08)}
+body.light-theme .stat{box-shadow:0 1px 3px rgba(80,90,140,.06)}
+body.light-theme .shift-block{box-shadow:0 1px 3px rgba(80,90,140,.06)}
+body.light-theme .modal{box-shadow:0 8px 40px rgba(0,0,0,.15)}
 body.light-theme .login-box{box-shadow:0 8px 30px rgba(0,0,0,.1)}
+/* Light badge overrides — dark badge backgrounds don't work on light bg */
+body.light-theme .badge-M{background:#dce8ff;color:#2563eb}
+body.light-theme .badge-T{background:#fef3d0;color:#b45309}
+body.light-theme .badge-N{background:#ede9fe;color:#6d28d9}
+body.light-theme .badge-V{background:#dcfce7;color:#16a34a}
+body.light-theme .badge-B{background:#fee2e2;color:#dc2626}
+body.light-theme .badge-D{background:#ffedd5;color:#ea580c}
+body.light-theme .badge-O{background:#fef9c3;color:#92400e}
+body.light-theme .badge-P{background:#ccfbf1;color:#0d9488}
+body.light-theme .pill-purple{background:#ede9fe;color:#6d28d9}
+/* Light calendar header overrides */
+body.light-theme .th-weekend{background:#e8eeff!important;color:#3b7ef5!important;border-bottom:2px solid rgba(59,126,245,.3)!important}
+body.light-theme .th-festivo{background:#fff4e0!important;color:#d97706!important;border-bottom:2px solid rgba(217,119,6,.3)!important}
+body.light-theme .th-today{background:#e3ecfd!important;color:#3b7ef5!important;border-bottom:2px solid #3b7ef5!important}
+body.light-theme .td-today{background:rgba(59,126,245,.06)!important;border-left:1px solid rgba(59,126,245,.25)!important}
+body.light-theme .cal-table td.name-cell{background:#fff}
+body.light-theme .cal-table tr:hover td,body.light-theme .cal-table tr:hover td.name-cell{background:var(--bg3)}
+body.light-theme .nav-item.active{background:var(--blue3);color:var(--blue)}
+body.light-theme .sel-banner{background:#e3ecfd;border-color:#c8dcff;color:#3b7ef5}
+body.light-theme ::-webkit-scrollbar-track{background:var(--bg3)}
+body.light-theme ::-webkit-scrollbar-thumb{background:var(--border2)}
 /* ── NOTIFICATION BELL ───────────────────────────────────────────────────── */
 .notif-wrap{position:relative;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:14px;transition:all .15s}
 .notif-wrap:hover{background:var(--bg4);color:var(--text)}
@@ -2501,9 +2531,6 @@ function ProfileView({user,onUserUpdate}){
             <input className="fi" type="email" placeholder="nombre@avatel.es" value={email} onChange={e=>setEmail(e.target.value)}/>
           </div>
         </div>
-        <div className="fg" style={{marginBottom:12}}><label className="fl">URL de foto de perfil</label>
-          <input className="fi" placeholder="https://..." value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)}/>
-        </div>
         <button className="btn btn-primary btn-sm" disabled={saving} onClick={savePersonalData}>{saving?'Guardando…':'Guardar datos'}</button>
       </div>
 
@@ -2624,17 +2651,31 @@ function CalN2View(){
           {MN.map((m,i)=><option key={i} value={i}>{m}</option>)}
         </select>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
-        {summary.map(s=>(
-          <div key={s.name} className="stat">
-            <div className="stat-label">Guardias asignadas</div>
-            <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:6}}>
-              <span className="stat-val" style={{color:'var(--orange)'}}>{s.total}</span>
-              <span style={{fontSize:12,color:'var(--text2)'}}>{s.name}</span>
-            </div>
-            <div style={{fontSize:11,color:'var(--text3)'}}>{s.withFest} con festivo · {(s.total*GUARDIA_N2_IMPORTE+s.withFest*GUARDIA_N2_FESTIVO_IMPORTE).toLocaleString('es-ES')}€ est.</div>
-          </div>
-        ))}
+      <div className="card" style={{marginBottom:20,padding:'16px 20px'}}>
+        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--text3)',marginBottom:14}}>Resumen de guardias 2026</div>
+        <div style={{display:'grid',gridTemplateColumns:`repeat(${summary.length},1fr)`,gap:0}}>
+          {summary.map((s,i)=>{
+            const importe=(s.total*GUARDIA_N2_IMPORTE+s.withFest*GUARDIA_N2_FESTIVO_IMPORTE);
+            const maxTotal=Math.max(...summary.map(x=>x.total))||1;
+            return(
+              <div key={s.name} style={{
+                padding:'12px 20px',
+                borderRight:i<summary.length-1?'1px solid var(--border)':'none',
+                textAlign:'center'
+              }}>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:10,color:'var(--text)'}}>{s.name.split(' ')[0]} {s.name.split(' ')[1]}</div>
+                <div style={{fontSize:32,fontWeight:700,color:'var(--orange)',lineHeight:1,marginBottom:6}}>{s.total}</div>
+                <div style={{height:4,borderRadius:2,background:'var(--bg4)',marginBottom:8}}>
+                  <div style={{height:'100%',borderRadius:2,background:'var(--orange)',width:`${(s.total/maxTotal)*100}%`,transition:'width .4s'}}/>
+                </div>
+                <div style={{display:'flex',justifyContent:'center',gap:12,fontSize:11,color:'var(--text3)'}}>
+                  <span>⚡ {s.withFest} fest.</span>
+                  <span style={{color:'var(--text2)',fontWeight:500}}>{importe.toLocaleString('es-ES')}€</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="alert alert-info" style={{marginBottom:12}}>
         <span>ℹ️</span><span>Haz clic en el nombre para cambiar la asignación. ⚡ = semana con festivo incluido.</span>
