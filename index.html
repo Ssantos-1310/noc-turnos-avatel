@@ -36,28 +36,28 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .app{display:flex;min-height:100vh}
 .sidebar{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column}
-.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
-.sidebar-logo h1{font-size:16px;font-weight:600;letter-spacing:.5px}
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid var(--border);background:linear-gradient(160deg,rgba(79,142,247,.06) 0%,transparent 100%)}
+.sidebar-logo h1{font-size:16px;font-weight:700;letter-spacing:.3px}
 .sidebar-logo span{font-size:11px;color:var(--text3);font-family:var(--mono)}
 .nav{padding:12px 8px;flex:1}
-.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;transition:all .15s;font-size:13px;margin-bottom:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;transition:all .15s;font-size:13px;margin-bottom:2px;border-left:2px solid transparent}
 .nav-item:hover{background:var(--bg3);color:var(--text)}
-.nav-item.active{background:var(--blue2);color:var(--blue);font-weight:500}
+.nav-item.active{background:var(--blue2);color:var(--blue);font-weight:500;border-left-color:var(--blue)}
 .nav-icon{width:16px;height:16px;flex-shrink:0}
 .nav-section{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);padding:12px 12px 6px}
 .sidebar-bottom{padding:12px 8px;border-top:1px solid var(--border)}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.topbar{height:56px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;background:var(--bg2)}
-.topbar-title{font-size:15px;font-weight:500;flex:1}
+.topbar{height:56px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;background:var(--bg2);box-shadow:0 1px 6px rgba(0,0,0,.2)}
+.topbar-title{font-size:15px;font-weight:600;flex:1}
 .content{flex:1;overflow-y:auto;padding:24px}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.card-title{font-size:13px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.08em}
+.card-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.stat{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.stat{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .stat-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
-.stat-val{font-size:26px;font-weight:600;letter-spacing:-.5px}
+.stat-val{font-size:26px;font-weight:700;letter-spacing:-.5px}
 .stat-sub{font-size:11px;color:var(--text3);margin-top:4px}
 /* Badges — D now orange */
 .badge{display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:500;border-radius:4px;min-width:22px;height:22px;padding:0 4px}
@@ -103,13 +103,14 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .req-desc{font-size:11px;color:var(--text2);margin-top:2px}
 .req-actions{display:flex;gap:6px;flex-shrink:0}
 /* Buttons */
-.btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid transparent}
-.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
-.btn-primary:hover{background:#3d7fe8}
+.btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;cursor:pointer;transition:all .18s;border:1px solid transparent}
+.btn-primary{background:linear-gradient(135deg,#5a9af8,#3d7ae8);color:#fff;border-color:#3d7ae8;box-shadow:0 2px 6px rgba(79,142,247,.3)}
+.btn-primary:hover{background:linear-gradient(135deg,#4d8df0,#2f6fd8);box-shadow:0 3px 10px rgba(79,142,247,.4);transform:translateY(-1px)}
+.btn-primary:active{transform:translateY(0);box-shadow:0 1px 3px rgba(79,142,247,.3)}
 .btn-ghost{background:var(--bg4);color:var(--text2);border-color:var(--border)}
-.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-ghost:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
 .btn-ok{background:var(--green2);color:var(--green);border-color:var(--green2)}
-.btn-ok:hover{background:#1f5c36}
+.btn-ok:hover{background:#1f5c36;color:#6fe89a}
 .btn-danger{background:var(--red2);color:var(--red);border-color:var(--red2)}
 .btn-danger:hover{background:#6b2222}
 .btn-warn{background:var(--amber2);color:var(--amber);border-color:var(--amber2)}
@@ -144,9 +145,11 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;background:var(--bg4);color:var(--text2);border:1px solid var(--border)}
 .notif{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;background:var(--red);color:#fff;border-radius:8px;font-size:10px;font-weight:600;padding:0 4px}
 .today-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-.shift-block{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.shift-block{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px;border-left:3px solid var(--border2);box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .sbt{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
-.sb-M .sbt{color:#7eb8f7}.sb-T .sbt{color:#f7b84f}.sb-N .sbt{color:#c084fc}
+.sb-M{border-left-color:#7eb8f7!important}.sb-M .sbt{color:#7eb8f7}
+.sb-T{border-left-color:#f7b84f!important}.sb-T .sbt{color:#f7b84f}
+.sb-N{border-left-color:#c084fc!important}.sb-N .sbt{color:#c084fc}
 .sp{font-size:13px;padding:5px 0;border-bottom:1px solid rgba(42,51,80,.4)}
 .sp:last-child{border-bottom:none}
 .alert{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:var(--radius-sm);margin-bottom:10px;font-size:12px}
@@ -212,10 +215,13 @@ body.light-theme{
 /* Light theme component overrides */
 body.light-theme .sidebar{background:#fff;border-right-color:var(--border)}
 body.light-theme .topbar{background:#fff;border-bottom-color:var(--border);box-shadow:0 1px 4px rgba(0,0,0,.06)}
-body.light-theme .card{box-shadow:0 1px 5px rgba(80,90,140,.08)}
-body.light-theme .stat{box-shadow:0 1px 3px rgba(80,90,140,.06)}
-body.light-theme .shift-block{box-shadow:0 1px 3px rgba(80,90,140,.06)}
+body.light-theme .card{box-shadow:0 1px 6px rgba(80,90,140,.1)}
+body.light-theme .stat{box-shadow:0 1px 4px rgba(80,90,140,.08)}
+body.light-theme .shift-block{box-shadow:0 1px 4px rgba(80,90,140,.08)}
 body.light-theme .modal{box-shadow:0 8px 40px rgba(0,0,0,.15)}
+body.light-theme .topbar{box-shadow:0 1px 5px rgba(80,90,140,.1)}
+body.light-theme .btn-primary{box-shadow:0 2px 6px rgba(59,126,245,.25)}
+body.light-theme .sidebar-logo{background:linear-gradient(160deg,rgba(59,126,245,.04) 0%,transparent 100%)}
 body.light-theme .login-box{box-shadow:0 8px 30px rgba(0,0,0,.1)}
 /* Light badge overrides — dark badge backgrounds don't work on light bg */
 body.light-theme .badge-M{background:#dce8ff;color:#2563eb}
@@ -2612,11 +2618,8 @@ function CalN2View(){
   const [assignments,setAssignments]=useState(()=>{
     const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%2];});return a;
   });
-  const [filterMonth,setFilterMonth]=useState(-1);
   const [pendingAssign,setPendingAssign]=useState(null); // {wn, person, week}
   const [saving,setSaving]=useState(false);
-
-  const weeks=filterMonth===-1?WEEKS_2026:WEEKS_2026.filter(w=>w.start.getMonth()===filterMonth||w.end.getMonth()===filterMonth);
   const assign=async(wn,person)=>{
     setSaving(true);
     setAssignments(p=>({...p,[wn]:person}));
@@ -2641,15 +2644,9 @@ function CalN2View(){
 
   return(
     <div>
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20,flexWrap:'wrap'}}>
-        <div>
-          <div style={{fontSize:16,fontWeight:600,marginBottom:2}}>Calendario Guardia N2</div>
-          <div style={{fontSize:12,color:'var(--text3)'}}>Rotación semanal de responsables · 2026</div>
-        </div>
-        <select className="fs" style={{marginLeft:'auto',width:'auto',fontSize:12,padding:'5px 10px'}} value={filterMonth} onChange={e=>setFilterMonth(Number(e.target.value))}>
-          <option value={-1}>Todo el año</option>
-          {MN.map((m,i)=><option key={i} value={i}>{m}</option>)}
-        </select>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:16,fontWeight:600,marginBottom:2}}>Calendario Guardia N2</div>
+        <div style={{fontSize:12,color:'var(--text3)'}}>Rotación semanal de responsables · 2026</div>
       </div>
       <div className="card" style={{marginBottom:20,padding:'16px 20px'}}>
         <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--text3)',marginBottom:14}}>Resumen de guardias 2026</div>
@@ -2678,40 +2675,70 @@ function CalN2View(){
         </div>
       </div>
       <div className="alert alert-info" style={{marginBottom:12}}>
-        <span>ℹ️</span><span>Haz clic en el nombre para cambiar la asignación. ⚡ = semana con festivo incluido.</span>
+        <span>ℹ️</span><span>Haz clic en un nombre para reasignar la guardia. ⚡ = semana con festivo incluido.</span>
       </div>
       <div className="card" style={{padding:0,overflow:'hidden'}}>
-        <table style={{width:'100%',borderCollapse:'collapse'}}>
-          <thead>
-            <tr style={{background:'var(--bg3)'}}>
-              {['Semana','Período','Fest.','Responsable N2','Importe'].map((h,i)=>(
-                <th key={h} style={{padding:'10px 14px',textAlign:i===3?'left':'center',fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',borderBottom:'1px solid var(--border)'}}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {weeks.map((w,i)=>{
-              const assigned=assignments[w.wn]||N2_MEMBERS[0];
-              const hasFest=weekHasFestivo(w);
-              const isCur=isCurrentWeek(w);
-              const imp=GUARDIA_N2_IMPORTE+(hasFest?GUARDIA_N2_FESTIVO_IMPORTE:0);
-              return(
-                <tr key={w.wn} style={{background:isCur?'rgba(79,142,247,.08)':i%2===0?'transparent':'rgba(255,255,255,.01)',borderBottom:'1px solid rgba(42,51,80,.3)'}}>
-                  <td style={{padding:'10px 14px',textAlign:'center'}}>
-                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-                      <span style={{fontFamily:'var(--mono)',fontSize:12,color:'var(--text3)'}}>S{String(w.wn).padStart(2,'0')}</span>
-                      {isCur&&<span className="pill pill-blue" style={{fontSize:9}}>Actual</span>}
-                    </div>
-                  </td>
-                  <td style={{padding:'10px 14px',fontSize:12,textAlign:'center',color:'var(--text2)'}}>
-                    {w.start.toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – {w.end.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}
-                  </td>
-                  <td style={{padding:'10px 14px',textAlign:'center'}}>{hasFest?<span style={{color:'var(--amber)'}}>⚡</span>:<span style={{color:'var(--text3)'}}>–</span>}</td>
-                  <td style={{padding:'10px 14px'}}>
-                    <div style={{display:'flex',gap:6}}>
+        {Array.from({length:12},(_,mi)=>{
+          const mWeeks=WEEKS_2026.filter(w=>w.start.getMonth()===mi||
+            (w.end.getMonth()===mi&&w.start.getMonth()!==mi));
+          if(mWeeks.length===0)return null;
+          const mTotals=N2_MEMBERS.map(name=>({
+            name,
+            count:mWeeks.filter(w=>assignments[w.wn]===name).length
+          }));
+          const mFest=mWeeks.filter(weekHasFestivo).length;
+          return(
+            <div key={mi}>
+              {/* Cabecera de mes */}
+              <div style={{
+                display:'grid',gridTemplateColumns:'120px 1fr auto',gap:16,
+                alignItems:'center',padding:'9px 16px',
+                background:'var(--bg4)',
+                borderTop:mi>0?'1px solid var(--border)':'none',
+                borderBottom:'1px solid var(--border)'
+              }}>
+                <span style={{fontSize:11,fontWeight:700,color:'var(--blue)',textTransform:'uppercase',letterSpacing:'.1em'}}>
+                  {MN[mi]} 2026
+                </span>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  {mTotals.map(t=>(
+                    <span key={t.name} style={{fontSize:11,color:'var(--text3)'}}>
+                      <span style={{color:'var(--text2)',fontWeight:600}}>{t.count}</span> {t.name.split(' ')[0]}
+                    </span>
+                  ))}
+                </div>
+                <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                  {mFest>0&&<span style={{fontSize:11,color:'var(--amber)'}}>⚡ {mFest} fest.</span>}
+                  <span style={{fontSize:11,color:'var(--text3)'}}>{mWeeks.length} sem.</span>
+                </div>
+              </div>
+              {/* Filas de semanas */}
+              {mWeeks.map(w=>{
+                const assigned=assignments[w.wn]||N2_MEMBERS[0];
+                const hasFest=weekHasFestivo(w);
+                const isCur=isCurrentWeek(w);
+                const imp=GUARDIA_N2_IMPORTE+(hasFest?GUARDIA_N2_FESTIVO_IMPORTE:0);
+                return(
+                  <div key={w.wn} style={{
+                    display:'grid',gridTemplateColumns:'80px 150px 40px 1fr 80px',
+                    alignItems:'center',padding:'8px 16px',
+                    borderBottom:'1px solid rgba(42,51,80,.25)',
+                    background:isCur?'rgba(79,142,247,.07)':'transparent',
+                    transition:'background .1s'
+                  }}>
+                    <span style={{fontFamily:'var(--mono)',fontSize:12,color:isCur?'var(--blue)':'var(--text3)',display:'flex',alignItems:'center',gap:6}}>
+                      S{String(w.wn).padStart(2,'0')}
+                      {isCur&&<span style={{fontSize:9,background:'var(--blue2)',color:'var(--blue)',padding:'1px 5px',borderRadius:8,fontFamily:'var(--font)'}}>hoy</span>}
+                    </span>
+                    <span style={{fontSize:12,color:'var(--text2)'}}>
+                      {w.start.toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – {w.end.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}
+                    </span>
+                    <span style={{textAlign:'center'}}>{hasFest?<span style={{color:'var(--amber)'}}>⚡</span>:<span style={{color:'var(--text3)'}}>–</span>}</span>
+                    <div style={{display:'flex',gap:5}}>
                       {N2_MEMBERS.map(m=>(
                         <button key={m} onClick={()=>assigned!==m&&setPendingAssign({wn:w.wn,person:m,week:w})}
-                          style={{padding:'4px 12px',borderRadius:5,border:'1px solid',fontSize:12,cursor:assigned===m?'default':'pointer',transition:'all .15s',
+                          style={{padding:'3px 10px',borderRadius:5,border:'1px solid',fontSize:12,
+                            cursor:assigned===m?'default':'pointer',transition:'all .15s',
                             borderColor:assigned===m?'var(--orange)':'var(--border)',
                             background:assigned===m?'var(--orange3)':'var(--bg3)',
                             color:assigned===m?'var(--orange)':'var(--text2)',fontWeight:assigned===m?600:400}}>
@@ -2719,15 +2746,15 @@ function CalN2View(){
                         </button>
                       ))}
                     </div>
-                  </td>
-                  <td style={{padding:'10px 14px',textAlign:'right',fontFamily:'var(--mono)',fontSize:12,color:hasFest?'var(--amber)':'var(--text2)'}}>
-                    {imp}€{hasFest&&<span style={{fontSize:10,marginLeft:4}}>(+fest)</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <span style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:12,color:hasFest?'var(--amber)':'var(--text2)'}}>
+                      {imp}€{hasFest&&<span style={{fontSize:10,marginLeft:3}}>(+⚡)</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
 
       {pendingAssign&&(
@@ -3091,7 +3118,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v4.0 — UX: dark mode, next7, notifs, confirmaciones</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v4.1 — Visual refresh + CalN2 agrupado por mes</div>
         </div>
       </div>
 
