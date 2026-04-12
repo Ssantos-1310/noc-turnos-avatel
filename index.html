@@ -2679,8 +2679,7 @@ function CalN2View(){
       </div>
       <div className="card" style={{padding:0,overflow:'hidden'}}>
         {Array.from({length:12},(_,mi)=>{
-          const mWeeks=WEEKS_2026.filter(w=>w.start.getMonth()===mi||
-            (w.end.getMonth()===mi&&w.start.getMonth()!==mi));
+          const mWeeks=WEEKS_2026.filter(w=>w.start.getMonth()===mi);
           if(mWeeks.length===0)return null;
           const mTotals=N2_MEMBERS.map(name=>({
             name,
