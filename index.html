@@ -130,6 +130,7 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .pill-bad{background:var(--red2);color:var(--red)}
 .pill-blue{background:var(--blue3);color:var(--blue)}
 .pill-purple{background:#2a1a4a;color:#c084fc}
+.pill-amber{background:rgba(247,184,79,.15);color:#f7b84f}
 .pill-neutral{background:var(--bg4);color:var(--text2)}
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
@@ -253,6 +254,7 @@ body.light-theme .badge-D{background:#ffedd5;color:#ea580c}
 body.light-theme .badge-O{background:#fef9c3;color:#92400e}
 body.light-theme .badge-P{background:#ccfbf1;color:#0d9488}
 body.light-theme .pill-purple{background:#ede9fe;color:#6d28d9}
+body.light-theme .pill-amber{background:#fef3c7;color:#d97706}
 /* Light calendar header overrides */
 body.light-theme .th-weekend{background:#e8eeff!important;color:#3b7ef5!important;border-bottom:2px solid rgba(59,126,245,.3)!important}
 body.light-theme .th-festivo{background:#fff4e0!important;color:#d97706!important;border-bottom:2px solid rgba(217,119,6,.3)!important}
@@ -1045,6 +1047,15 @@ function TeamView(){
   const [emps,setEmps]=useState(EMPS);
   const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
 
+  // FIX: vacVer declarado ANTES de los useEffect que lo usan (evita TDZ bug)
+  const [vacVer,setVacVer]=React.useState(window.__calendarVersion||0);
+
+  // Polling de versión de calendario para refrescar tras cambios en el calendario
+  useEffect(()=>{
+    const iv=setInterval(()=>{const v=window.__calendarVersion||0;if(v!==vacVer)setVacVer(v);},1000);
+    return()=>clearInterval(iv);
+  },[vacVer]);
+
   // Carga lista dinámica de operadores desde BD
   useEffect(()=>{
     sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
@@ -1055,44 +1066,45 @@ function TeamView(){
     });
   },[]);
 
-  // Carga turno del mes actual (para columnas "Turno hoy" y "Situación")
-  // Se refresca también cuando vacVer cambia (tras edición directa en calendario)
+  // Carga turno del mes actual — se refresca cuando vacVer cambia
   useEffect(()=>{
     delete shiftsCache[`2026-${String(mi+1).padStart(2,'0')}`];
     fetchShiftsForMonth(mi).then(setMd);
   },[mi,vacVer]);
 
-  // Polling de versión de calendario para refrescar tras aprobaciones
-  const [vacVer,setVacVer]=React.useState(window.__calendarVersion||0);
-  useEffect(()=>{
-    const iv=setInterval(()=>{const v=window.__calendarVersion||0;if(v!==vacVer)setVacVer(v);},1000);
-    return()=>clearInterval(iv);
-  },[vacVer]);
-
-  // Carga estadísticas anuales reales desde BD (reemplaza REC hardcodeado)
+  // Carga estadísticas anuales con paginación (Supabase limita a 1000 filas por query)
   useEffect(()=>{
     setStatsLoading(true);
-    sb.from('shifts')
-      .select('shift_type,employee:employee_id(short_name)')
-      .gte('shift_date','2026-01-01')
-      .lte('shift_date','2026-12-31')
-      .then(({data})=>{
-        const stats={};
-        (data||[]).forEach(row=>{
-          const sn=row.employee?.short_name;
-          if(!sn)return;
-          if(!stats[sn])stats[sn]={M:0,T:0,N:0,V:0,B:0,D:0,P:0};
-          const t=row.shift_type;
-          if(t in stats[sn])stats[sn][t]++;
-        });
-        // Horas: cada turno trabajado (M/T/N/P/D) = 8h
-        Object.values(stats).forEach(s=>{s.h=(s.M+s.T+s.N+s.P+s.D)*8;});
-        setAnnualStats(stats);
-        setStatsLoading(false);
+    (async()=>{
+      const PAGE=1000;
+      let allRows=[];
+      let from=0;
+      while(true){
+        const{data,error}=await sb.from('shifts')
+          .select('shift_type,employee:employee_id(short_name)')
+          .gte('shift_date','2026-01-01')
+          .lte('shift_date','2026-12-31')
+          .range(from,from+PAGE-1);
+        if(error||!data||data.length===0)break;
+        allRows=allRows.concat(data);
+        if(data.length<PAGE)break;
+        from+=PAGE;
+      }
+      const stats={};
+      allRows.forEach(row=>{
+        const sn=row.employee?.short_name;
+        if(!sn)return;
+        if(!stats[sn])stats[sn]={M:0,T:0,N:0,V:0,B:0,D:0,P:0};
+        const t=row.shift_type;
+        if(t in stats[sn])stats[sn][t]++;
       });
+      Object.values(stats).forEach(s=>{s.h=(s.M+s.T+s.N+s.P+s.D)*8;});
+      setAnnualStats(stats);
+      setStatsLoading(false);
+    })();
   },[vacVer]);
 
-  // Carga saldo de vacaciones desde BD
+  // Carga saldo de vacaciones desde BD — se refresca cuando vacVer cambia
   useEffect(()=>{
     sb.from('vacation_balance').select('days_remaining,days_used,employee:employee_id(short_name)').eq('year',2026).then(({data})=>{
       if(!data)return;
@@ -1106,19 +1118,24 @@ function TeamView(){
   function getTurno(emp){
     const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
     const s=(md[empKey]||[])[d-1]||'';
-    if(s==='M')return{label:'Mañana',cls:'pill-blue'};
-    if(s==='T')return{label:'Tarde',cls:'pill-purple'};
-    if(s==='N')return{label:'Noche',cls:'pill-purple'};
-    if(s==='D')return{label:'H. extras',cls:'pill-warn'};
-    if(s==='O')return{label:'Onboarding',cls:'pill-neutral'};
-    return{label:'Libre',cls:'pill-ok'};
+    if(s==='M')return{label:'Mañana',cls:'pill-blue',av:'#7eb8f7'};
+    if(s==='T')return{label:'Tarde',cls:'pill-amber',av:'#f7b84f'};
+    if(s==='N')return{label:'Noche',cls:'pill-purple',av:'#c084fc'};
+    if(s==='D')return{label:'H. extras',cls:'pill-warn',av:'#f7b84f'};
+    if(s==='O')return{label:'Onboarding',cls:'pill-neutral',av:'var(--text3)'};
+    return{label:'Libre',cls:'pill-ok',av:'var(--green)'};
   }
   function getSituacion(emp){
     const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
     const s=(md[empKey]||[])[d-1]||'';
-    if(s==='B')return{label:'Baja',cls:'pill-bad'};
-    if(s==='V')return{label:'Vacaciones',cls:'pill-warn'};
+    if(s==='B')return{label:'Baja',cls:'pill-bad',av:'var(--red)'};
+    if(s==='V')return{label:'Vacaciones',cls:'pill-warn',av:'var(--amber)'};
     return null;
+  }
+  function getInitials(emp){
+    const key=(empShortMap[emp]||EMP_SHORT[emp]||emp).trim();
+    const parts=key.split(/\s+/);
+    return(parts.length>=2?parts[0][0]+parts[1][0]:key.substring(0,2)).toUpperCase();
   }
 
   // Estadísticas por operador usando datos reales de BD
@@ -1133,80 +1150,152 @@ function TeamView(){
     return{emp,r,h,j,eh,hst,shortKey,vacUsed:vac?.used??r.V??0,vacRemaining:vac?.remaining??null};
   }),[emps,empShortMap,annualStats,vacBalances]);
 
+  const totalHours=useMemo(()=>ed.reduce((s,e)=>s+e.h,0),[ed]);
+  const totalJornadas=useMemo(()=>ed.reduce((s,e)=>s+e.j,0),[ed]);
+  const alertCount=useMemo(()=>ed.filter(e=>e.hst!=='ok').length,[ed]);
+
   // Ausentes hoy
   const bajas=emps.filter(e=>(md[empShortMap[e]||EMP_SHORT[e]||e]||[])[d-1]==='B');
   const vacas=emps.filter(e=>(md[empShortMap[e]||EMP_SHORT[e]||e]||[])[d-1]==='V');
 
   return(
     <div>
-      <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr 1fr',gap:12,marginBottom:20}}>
-        {/* Operadores widget — now expanded with vacas+bajas */}
-        <div className="stat" style={{gridRow:'span 1'}}>
-          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:4}}>
-            <div className="stat-label">Equipo</div>
-          </div>
-          <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:10}}>
+      {/* ── KPI cards ─────────────────────────────────────────────── */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+        {/* Equipo */}
+        <div className="stat">
+          <div className="stat-label">Equipo</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:8}}>
             <span className="stat-val" style={{color:'var(--teal)'}}>{emps.length}</span>
             <span style={{fontSize:12,color:'var(--text3)'}}>operadores</span>
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:2}}>Hoy ausentes</div>
-            {bajas.length===0&&vacas.length===0&&(
-              <span style={{fontSize:12,color:'var(--green)'}}>✓ Sin ausencias</span>
-            )}
-            {bajas.map(e=>(
-              <div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
-                <span className="pill pill-bad" style={{fontSize:10,padding:'1px 6px'}}>Baja</span>
-                <span style={{color:'var(--text2)'}}>{e}</span>
-              </div>
-            ))}
-            {vacas.map(e=>(
-              <div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
-                <span className="pill pill-warn" style={{fontSize:10,padding:'1px 6px'}}>Vacaciones</span>
-                <span style={{color:'var(--text2)'}}>{e}</span>
-              </div>
-            ))}
+          <div style={{display:'flex',flexDirection:'column',gap:5}}>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:1}}>Hoy ausentes</div>
+            {bajas.length===0&&vacas.length===0&&<span style={{fontSize:12,color:'var(--green)'}}>✓ Sin ausencias</span>}
+            {bajas.map(e=><div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}><span className="pill pill-bad" style={{fontSize:10,padding:'1px 6px'}}>Baja</span><span style={{color:'var(--text2)'}}>{e.split(' ')[0]}</span></div>)}
+            {vacas.map(e=><div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}><span className="pill pill-warn" style={{fontSize:10,padding:'1px 6px'}}>Vacac.</span><span style={{color:'var(--text2)'}}>{e.split(' ')[0]}</span></div>)}
           </div>
         </div>
-        <div className="stat"><div className="stat-label">Horas pactadas</div><div className="stat-val" style={{color:'var(--blue)'}}>1.624h</div><div className="stat-sub">203 jornadas · 23 días vacac.</div></div>
-        <div className="stat"><div className="stat-label">Alertas horas</div><div className="stat-val" style={{color:'var(--amber)'}}>{ed.filter(e=>e.hst!=='ok').length}</div><div className="stat-sub">sobre el 92% de las pactadas</div></div>
-      </div>
-      <div className="card" style={{padding:0}}>
-        <div style={{padding:'16px 16px 0',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-          <span className="card-title">Resumen anual</span>
-          <span style={{fontSize:11,color:'var(--text3)'}}>Turno/Situación = hoy, {today.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</span>
+        {/* Horas acumuladas — dinámico */}
+        <div className="stat">
+          <div className="stat-label">Horas acumuladas</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:8}}>
+            <span className="stat-val" style={{color:'var(--blue)'}}>{totalHours}h</span>
+            <span style={{fontSize:11,color:'var(--text3)'}}>/ {HMAX}h ref.</span>
+          </div>
+          <div style={{height:5,background:'var(--bg4)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
+            <div style={{height:'100%',background:'var(--blue)',borderRadius:3,width:`${Math.min(totalHours/HMAX*100,100).toFixed(1)}%`,transition:'width .4s'}}/>
+          </div>
+          <div className="stat-sub">{totalJornadas} jornadas · {emps.length} ops.</div>
         </div>
-        {statsLoading&&<div style={{padding:'20px',textAlign:'center',color:'var(--text3)',fontSize:12}}>Cargando estadísticas...</div>}
+        {/* Alertas horas */}
+        <div className="stat">
+          <div className="stat-label">Alertas horas</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:8}}>
+            <span className="stat-val" style={{color:alertCount>0?'var(--amber)':'var(--green)'}}>{alertCount}</span>
+            <span style={{fontSize:12,color:'var(--text3)'}}>alertas</span>
+          </div>
+          <div className="stat-sub">sobre el 92% de {HMAX}h pactadas</div>
+        </div>
+        {/* Ausencias hoy */}
+        <div className="stat">
+          <div className="stat-label">Ausencias hoy</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:8}}>
+            <span className="stat-val" style={{color:vacas.length+bajas.length>0?'var(--amber)':'var(--green)'}}>{vacas.length+bajas.length}</span>
+            <span style={{fontSize:12,color:'var(--text3)'}}>ausentes</span>
+          </div>
+          <div style={{display:'flex',gap:16}}>
+            <span style={{fontSize:12,color:'var(--text3)'}}><span style={{color:'var(--amber)',fontWeight:700}}>{vacas.length}</span> vacaciones</span>
+            <span style={{fontSize:12,color:'var(--text3)'}}><span style={{color:'var(--red)',fontWeight:700}}>{bajas.length}</span> bajas</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabla resumen ──────────────────────────────────────────── */}
+      <div className="card" style={{padding:0}}>
+        <div style={{padding:'14px 16px 10px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)'}}>
+          <span className="card-title">Resumen anual</span>
+          <span style={{fontSize:11,color:'var(--text3)'}}>Estado = hoy, {today.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</span>
+        </div>
+        {statsLoading&&<div style={{padding:'24px',textAlign:'center',color:'var(--text3)',fontSize:12}}>Cargando estadísticas…</div>}
         {!statsLoading&&<div style={{overflowX:'auto'}}>
           <table className="emp-table">
-            <thead><tr><th>Operador</th><th>Horas ({HMAX}h)</th><th>Jornadas ({JMAX})</th><th>M / T / N</th><th>Vacac. usadas</th><th>Vacac. restantes</th><th>Bajas</th><th>H.extras</th><th>Estado hoy</th></tr></thead>
+            <thead><tr>
+              <th style={{paddingLeft:16,minWidth:200}}>Operador</th>
+              <th style={{minWidth:150}}>Horas ({HMAX}h)</th>
+              <th style={{minWidth:70}}>Jornadas</th>
+              <th style={{minWidth:130}}>M · T · N</th>
+              <th style={{minWidth:110}}>Vacaciones</th>
+              <th style={{minWidth:90}}>H. Extra / Baja</th>
+              <th style={{paddingRight:16,minWidth:110}}>Estado hoy</th>
+            </tr></thead>
             <tbody>
               {ed.map(({emp,r,h,j,eh,hst,vacUsed,vacRemaining})=>{
                 const noData=h===0&&j===0;
-                const bc=noData?'var(--text3)':hst==='ok'?'#4fc97a':hst==='warn'?'#f7b84f':'#f75f5f';
+                const bc=noData?'var(--bg4)':hst==='ok'?'#4fc97a':hst==='warn'?'#f7b84f':'#f75f5f';
                 const ec=eh>80?'var(--red)':eh>60?'var(--amber)':'var(--text2)';
                 const turno=getTurno(emp);
                 const situ=getSituacion(emp);
-                return(<tr key={emp} style={{opacity:noData?.5:1}}>
-                  <td style={{fontWeight:500}}>
-                    {emp}
-                    {noData&&<span style={{fontSize:10,color:'var(--text3)',marginLeft:6}}>sin datos</span>}
-                  </td>
-                  <td><div style={{display:'flex',alignItems:'center',gap:6}}><div className="hbar"><div className="hfill" style={{width:`${Math.min(h/HMAX*100,100)}%`,background:bc}}/></div><span style={{fontFamily:'var(--mono)',fontSize:12}}>{noData?'—':h+'h'}</span></div></td>
-                  <td><span style={{fontFamily:'var(--mono)',fontSize:12}}>{j||0}</span></td>
-                  <td>
-                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#7eb8f7'}}>{r.M||0}</span>
-                    <span style={{color:'var(--text3)',margin:'0 3px'}}>/</span>
-                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#f7b84f'}}>{r.T||0}</span>
-                    <span style={{color:'var(--text3)',margin:'0 3px'}}>/</span>
-                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'#c084fc'}}>{r.N||0}</span>
-                  </td>
-                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:vacUsed>VMAX?'var(--red)':'var(--text2)'}}>{vacUsed}</span></td>
-                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:vacRemaining===null?'var(--text3)':vacRemaining>=10?'var(--green)':vacRemaining>=5?'var(--amber)':'var(--red)'}}>{vacRemaining===null?'–':vacRemaining}</span></td>
-                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:r.B>0?'var(--red)':'var(--text2)'}}>{r.B||0}</span></td>
-                  <td><span style={{fontFamily:'var(--mono)',fontSize:12,color:ec}}>{r.D||0} ({eh}h)</span></td>
-                  <td>{situ?<span className={`pill ${situ.cls}`}>{situ.label}</span>:<span className={`pill ${turno.cls}`}>{turno.label}</span>}</td>
-                </tr>);
+                const estado=situ||turno;
+                const avColor=estado.av;
+                const vacPct=VMAX>0?Math.min((vacUsed/VMAX)*100,100):0;
+                return(
+                  <tr key={emp} style={{opacity:noData?.55:1}}>
+                    {/* Operador + avatar */}
+                    <td style={{paddingLeft:16}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div style={{width:32,height:32,borderRadius:'50%',flexShrink:0,background:`${avColor}1a`,border:`1.5px solid ${avColor}55`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:avColor,fontFamily:'var(--mono)',letterSpacing:'-.5px'}}>{getInitials(emp)}</div>
+                        <div>
+                          <div style={{fontWeight:500,fontSize:13,color:'var(--text1)'}}>{emp}</div>
+                          {noData&&<div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>sin turnos registrados</div>}
+                        </div>
+                      </div>
+                    </td>
+                    {/* Horas */}
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div className="hbar" style={{width:76}}>
+                          <div className="hfill" style={{width:`${Math.min(h/HMAX*100,100)}%`,background:bc}}/>
+                        </div>
+                        <span style={{fontFamily:'var(--mono)',fontSize:12,color:hst==='bad'?'var(--red)':hst==='warn'?'var(--amber)':'var(--text1)',minWidth:36}}>{noData?'—':h+'h'}</span>
+                      </div>
+                    </td>
+                    {/* Jornadas */}
+                    <td><span style={{fontFamily:'var(--mono)',fontSize:13,fontWeight:600,color:'var(--text1)'}}>{j||0}</span></td>
+                    {/* M · T · N chips */}
+                    <td>
+                      <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                        <span style={{fontSize:12,fontFamily:'var(--mono)',color:'#7eb8f7',background:'rgba(126,184,247,.12)',padding:'2px 7px',borderRadius:4}}>{r.M||0}<span style={{fontSize:9,color:'var(--text3)',marginLeft:2,fontFamily:'var(--sans)'}}>M</span></span>
+                        <span style={{fontSize:12,fontFamily:'var(--mono)',color:'#f7b84f',background:'rgba(247,184,79,.12)',padding:'2px 7px',borderRadius:4}}>{r.T||0}<span style={{fontSize:9,color:'var(--text3)',marginLeft:2,fontFamily:'var(--sans)'}}>T</span></span>
+                        <span style={{fontSize:12,fontFamily:'var(--mono)',color:'#c084fc',background:'rgba(192,132,252,.12)',padding:'2px 7px',borderRadius:4}}>{r.N||0}<span style={{fontSize:9,color:'var(--text3)',marginLeft:2,fontFamily:'var(--sans)'}}>N</span></span>
+                      </div>
+                    </td>
+                    {/* Vacaciones mini-bar */}
+                    <td>
+                      <div style={{display:'flex',flexDirection:'column',gap:3,minWidth:90}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <span style={{fontSize:11,color:'var(--text3)'}}>usadas</span>
+                          <span style={{fontSize:11,fontFamily:'var(--mono)',color:vacUsed>VMAX?'var(--red)':'var(--text2)'}}>{vacUsed}/{VMAX}</span>
+                        </div>
+                        <div style={{height:4,background:'var(--bg4)',borderRadius:2,overflow:'hidden'}}>
+                          <div style={{height:'100%',borderRadius:2,background:vacUsed>VMAX?'var(--red)':vacUsed>VMAX*.75?'var(--amber)':'var(--teal)',width:`${vacPct}%`,transition:'width .4s'}}/>
+                        </div>
+                        {vacRemaining!==null&&<span style={{fontSize:10,color:vacRemaining>=10?'var(--green)':vacRemaining>=5?'var(--amber)':'var(--red)'}}>{vacRemaining} restantes</span>}
+                      </div>
+                    </td>
+                    {/* H.Extra + Bajas consolidado */}
+                    <td>
+                      <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                        <span style={{fontFamily:'var(--mono)',fontSize:12,color:ec}}>{r.D||0}<span style={{fontFamily:'var(--sans)',fontSize:10,color:'var(--text3)',marginLeft:3}}>ext ({eh}h)</span></span>
+                        {r.B>0&&<span style={{fontSize:10,color:'var(--red)',background:'rgba(247,95,95,.1)',padding:'1px 6px',borderRadius:3,alignSelf:'flex-start'}}>{r.B} baja{r.B>1?'s':''}</span>}
+                      </div>
+                    </td>
+                    {/* Estado hoy */}
+                    <td style={{paddingRight:16}}>
+                      <span className={`pill ${estado.cls}`}>{estado.label}</span>
+                    </td>
+                  </tr>
+                );
               })}
             </tbody>
           </table>
@@ -2890,8 +2979,34 @@ function ResumenRRHH(){
   const [showAddRow,setShowAddRow]=useState(false);
   const [newRow,setNewRow]=useState({emp:'',tipo:'horas_extra',horas:'',fecha:'',desc:''});
 
-  const monthKey=MONTHS[selMonth];
-  const md=SD[monthKey]||{};
+  // Datos REALES desde Supabase (misma lógica que TeamView / CalendarView)
+  const [emps,setEmps]=useState(EMPS);
+  const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
+  const [md,setMd]=useState({});
+  const [rrhhVer,setRrhhVer]=React.useState(window.__calendarVersion||0);
+
+  // Polling de cambios en el calendario
+  useEffect(()=>{
+    const iv=setInterval(()=>{const v=window.__calendarVersion||0;if(v!==rrhhVer)setRrhhVer(v);},1000);
+    return()=>clearInterval(iv);
+  },[rrhhVer]);
+
+  // Lista de operadores desde BD
+  useEffect(()=>{
+    sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
+      if(data&&data.length>0){
+        setEmps(data.filter(e=>e.role==='operator').map(e=>e.full_name));
+        const m={};data.forEach(e=>{m[e.full_name]=e.short_name;});setEmpShortMap(m);
+      }
+    });
+  },[]);
+
+  // Turnos del mes seleccionado desde BD — se refresca con rrhhVer y al cambiar mes
+  useEffect(()=>{
+    delete shiftsCache[`2026-${String(selMonth+1).padStart(2,'0')}`];
+    fetchShiftsForMonth(selMonth).then(setMd);
+  },[selMonth,rrhhVer]);
+
   const mesNum=selMonth+1;
 
   const getApprover=(empName)=>{
@@ -2902,8 +3017,8 @@ function ResumenRRHH(){
   const rows=useMemo(()=>{
     const result=[];
     const days=MD[selMonth];
-    EMPS.forEach(emp=>{
-      const empKey=EMP_SHORT[emp]||emp;
+    emps.forEach(emp=>{
+      const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
       let horasExtra=0,horasFestivos=0,plusNoc=0;
       const festDates=[],nDates=[];
       for(let i=0;i<days;i++){
@@ -2931,7 +3046,7 @@ function ResumenRRHH(){
     });
     extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
     return result;
-  },[selMonth,n2Assigns,extraRows,md]);
+  },[selMonth,n2Assigns,extraRows,md,emps,empShortMap]);
 
   const COL=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA','Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM','GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC','FECHA Y HORA','DESCRIPCIÓN'];
 
@@ -3034,7 +3149,7 @@ function ResumenRRHH(){
             <div className="fg"><label className="fl">Operador</label>
               <select className="fs" value={newRow.emp} onChange={e=>setNewRow(p=>({...p,emp:e.target.value}))}>
                 <option value="">Seleccionar…</option>
-                {[...EMPS,...N2_MEMBERS].filter((v,i,a)=>a.indexOf(v)===i).map(e=><option key={e}>{e}</option>)}
+                {[...emps,...N2_MEMBERS].filter((v,i,a)=>a.indexOf(v)===i).map(e=><option key={e}>{e}</option>)}
               </select>
             </div>
             <div className="fg"><label className="fl">Tipo de incidencia</label>
