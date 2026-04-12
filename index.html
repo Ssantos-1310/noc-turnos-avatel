@@ -2979,8 +2979,34 @@ function ResumenRRHH(){
   const [showAddRow,setShowAddRow]=useState(false);
   const [newRow,setNewRow]=useState({emp:'',tipo:'horas_extra',horas:'',fecha:'',desc:''});
 
-  const monthKey=MONTHS[selMonth];
-  const md=SD[monthKey]||{};
+  // Datos REALES desde Supabase (misma lógica que TeamView / CalendarView)
+  const [emps,setEmps]=useState(EMPS);
+  const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
+  const [md,setMd]=useState({});
+  const [rrhhVer,setRrhhVer]=React.useState(window.__calendarVersion||0);
+
+  // Polling de cambios en el calendario
+  useEffect(()=>{
+    const iv=setInterval(()=>{const v=window.__calendarVersion||0;if(v!==rrhhVer)setRrhhVer(v);},1000);
+    return()=>clearInterval(iv);
+  },[rrhhVer]);
+
+  // Lista de operadores desde BD
+  useEffect(()=>{
+    sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
+      if(data&&data.length>0){
+        setEmps(data.filter(e=>e.role==='operator').map(e=>e.full_name));
+        const m={};data.forEach(e=>{m[e.full_name]=e.short_name;});setEmpShortMap(m);
+      }
+    });
+  },[]);
+
+  // Turnos del mes seleccionado desde BD — se refresca con rrhhVer y al cambiar mes
+  useEffect(()=>{
+    delete shiftsCache[`2026-${String(selMonth+1).padStart(2,'0')}`];
+    fetchShiftsForMonth(selMonth).then(setMd);
+  },[selMonth,rrhhVer]);
+
   const mesNum=selMonth+1;
 
   const getApprover=(empName)=>{
@@ -2991,8 +3017,8 @@ function ResumenRRHH(){
   const rows=useMemo(()=>{
     const result=[];
     const days=MD[selMonth];
-    EMPS.forEach(emp=>{
-      const empKey=EMP_SHORT[emp]||emp;
+    emps.forEach(emp=>{
+      const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
       let horasExtra=0,horasFestivos=0,plusNoc=0;
       const festDates=[],nDates=[];
       for(let i=0;i<days;i++){
@@ -3020,7 +3046,7 @@ function ResumenRRHH(){
     });
     extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
     return result;
-  },[selMonth,n2Assigns,extraRows,md]);
+  },[selMonth,n2Assigns,extraRows,md,emps,empShortMap]);
 
   const COL=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA','Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM','GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC','FECHA Y HORA','DESCRIPCIÓN'];
 
@@ -3123,7 +3149,7 @@ function ResumenRRHH(){
             <div className="fg"><label className="fl">Operador</label>
               <select className="fs" value={newRow.emp} onChange={e=>setNewRow(p=>({...p,emp:e.target.value}))}>
                 <option value="">Seleccionar…</option>
-                {[...EMPS,...N2_MEMBERS].filter((v,i,a)=>a.indexOf(v)===i).map(e=><option key={e}>{e}</option>)}
+                {[...emps,...N2_MEMBERS].filter((v,i,a)=>a.indexOf(v)===i).map(e=><option key={e}>{e}</option>)}
               </select>
             </div>
             <div className="fg"><label className="fl">Tipo de incidencia</label>
