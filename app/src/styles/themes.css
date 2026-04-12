@@ -1,0 +1,59 @@
+/* ── LIGHT THEME ────────────────────────────────────────────────────────────── */
+body.light-theme{
+  --bg:#f0f2f8;--bg2:#ffffff;--bg3:#f5f6fb;--bg4:#ebecf5;
+  --border:#dde0ef;--border2:#c8cde3;
+  --text:#1a2040;--text2:#3d4a72;--text3:#7a85a3;
+  --blue:#3b7ef5;--blue2:#e3ecfd;--blue3:#d4e5ff;
+  --teal:#00bfa5;
+  --green:#27ae60;--green2:#e6f7ed;
+  --red:#e53935;--red2:#fdecea;
+  --amber:#d97706;--amber2:#fef3d0;
+  --orange:#ea580c;--orange2:#fed7aa;--orange3:#fff0e6;
+  --weekend-bg:rgba(59,126,245,0.05);--weekend-border:rgba(59,126,245,0.18);
+  --festivo-bg:rgba(217,119,6,0.07);--festivo-border:rgba(217,119,6,0.3);
+}
+
+/* Layout overrides */
+body.light-theme .sidebar{background:#fff;border-right-color:var(--border)}
+body.light-theme .topbar{background:#fff;border-bottom-color:var(--border);box-shadow:0 1px 4px rgba(0,0,0,.06)}
+body.light-theme .topbar{box-shadow:0 1px 5px rgba(80,90,140,.1)}
+body.light-theme .sidebar-logo{background:linear-gradient(160deg,rgba(59,126,245,.04) 0%,transparent 100%)}
+
+/* Card overrides */
+body.light-theme .card{box-shadow:0 1px 6px rgba(80,90,140,.1)}
+body.light-theme .stat{box-shadow:0 1px 4px rgba(80,90,140,.08)}
+body.light-theme .shift-block{box-shadow:0 1px 4px rgba(80,90,140,.08)}
+body.light-theme .modal{box-shadow:0 8px 40px rgba(0,0,0,.15)}
+body.light-theme .login-box{box-shadow:0 8px 30px rgba(0,0,0,.1)}
+
+/* Button overrides */
+body.light-theme .btn-primary{box-shadow:0 2px 6px rgba(59,126,245,.25)}
+
+/* Navigation overrides */
+body.light-theme .nav-item.active{background:var(--blue3);color:var(--blue)}
+
+/* Badge overrides — dark backgrounds don't work on light bg */
+body.light-theme .badge-M{background:#dce8ff;color:#2563eb}
+body.light-theme .badge-T{background:#fef3d0;color:#b45309}
+body.light-theme .badge-N{background:#ede9fe;color:#6d28d9}
+body.light-theme .badge-V{background:#dcfce7;color:#16a34a}
+body.light-theme .badge-B{background:#fee2e2;color:#dc2626}
+body.light-theme .badge-D{background:#ffedd5;color:#ea580c}
+body.light-theme .badge-O{background:#fef9c3;color:#92400e}
+body.light-theme .badge-P{background:#ccfbf1;color:#0d9488}
+body.light-theme .pill-purple{background:#ede9fe;color:#6d28d9}
+
+/* Calendar overrides */
+body.light-theme .th-weekend{background:#e8eeff!important;color:#3b7ef5!important;border-bottom:2px solid rgba(59,126,245,.3)!important}
+body.light-theme .th-festivo{background:#fff4e0!important;color:#d97706!important;border-bottom:2px solid rgba(217,119,6,.3)!important}
+body.light-theme .th-today{background:#e3ecfd!important;color:#3b7ef5!important;border-bottom:2px solid #3b7ef5!important}
+body.light-theme .td-today{background:rgba(59,126,245,.06)!important;border-left:1px solid rgba(59,126,245,.25)!important}
+body.light-theme .cal-table td.name-cell{background:#fff}
+body.light-theme .cal-table tr:hover td,body.light-theme .cal-table tr:hover td.name-cell{background:var(--bg3)}
+
+/* Multi-select banner override */
+body.light-theme .sel-banner{background:#e3ecfd;border-color:#c8dcff;color:#3b7ef5}
+
+/* Scrollbar overrides */
+body.light-theme ::-webkit-scrollbar-track{background:var(--bg3)}
+body.light-theme ::-webkit-scrollbar-thumb{background:var(--border2)}
