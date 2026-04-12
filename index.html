@@ -169,6 +169,26 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .rule-num:focus{border-color:var(--blue)}
 /* Multi-select banner */
 .sel-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--blue3);border:1px solid var(--blue2);border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px}
+/* ── Coverage panel C ──────────────────────────────────────────────────────── */
+.covc-wrap{margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.covc-hdr{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)}
+.covc-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.covc-legend{display:flex;gap:12px;margin-left:auto}
+.covc-leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.covc-leg-dot{width:7px;height:7px;border-radius:50%}
+.covc-scroll{overflow-x:auto}
+.covc-grid{display:grid;min-width:max-content}
+.covc-lbl{display:flex;align-items:center;padding:0 12px;font-size:11px;font-weight:600;color:var(--text2);border-right:1px solid var(--border);border-bottom:1px solid rgba(42,51,80,.25);height:32px;gap:6px;white-space:nowrap;min-width:110px}
+.covc-lbl small{font-size:9px;color:var(--text3);font-family:var(--mono);margin-left:2px}
+.covc-lbl.last{border-bottom:none}
+.covc-spacer{display:flex;align-items:center;padding:0 12px;font-size:8px;color:var(--text3);letter-spacing:.06em;border-right:1px solid var(--border);border-bottom:1px solid var(--border);height:22px;min-width:110px}
+.covc-hcell{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;font-size:9px;color:var(--text3);height:22px;min-width:38px;border-right:1px solid rgba(42,51,80,.2);border-bottom:1px solid var(--border)}
+.covc-hcell.we{color:#7eb8f7;background:rgba(79,142,247,.04)}.covc-hcell.fe{color:var(--amber);background:rgba(247,184,79,.05)}.covc-hcell.tod{color:var(--blue);background:rgba(79,142,247,.08);border-bottom:2px solid var(--blue)}
+.covc-cell{display:flex;align-items:center;justify-content:center;height:32px;min-width:38px;border-right:1px solid rgba(42,51,80,.2);border-bottom:1px solid rgba(42,51,80,.25)}
+.covc-cell.we{background:rgba(79,142,247,.04)}.covc-cell.fe{background:rgba(247,184,79,.04)}.covc-cell.tod{background:rgba(79,142,247,.08)}
+.covc-cell.last{border-bottom:none}
+.covc-pill{font-size:10px;font-family:var(--mono);font-weight:600;padding:1px 6px;border-radius:3px}
+.covc-ok{background:rgba(79,201,122,.12);color:var(--green)}.covc-warn{background:rgba(247,184,79,.14);color:var(--amber)}.covc-bad{background:rgba(247,95,95,.12);color:var(--red)}
 /* ── LOGIN ─────────────────────────────────────────────────────────────────── */
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
 .login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:40px 36px;width:100%;max-width:390px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
@@ -242,6 +262,13 @@ body.light-theme .cal-table td.name-cell{background:#fff}
 body.light-theme .cal-table tr:hover td,body.light-theme .cal-table tr:hover td.name-cell{background:var(--bg3)}
 body.light-theme .nav-item.active{background:var(--blue3);color:var(--blue)}
 body.light-theme .sel-banner{background:#e3ecfd;border-color:#c8dcff;color:#3b7ef5}
+body.light-theme .covc-wrap{background:#fff;border-color:var(--border)}
+body.light-theme .covc-hdr{background:var(--bg3);border-color:var(--border)}
+body.light-theme .covc-lbl{border-right-color:var(--border);border-bottom-color:var(--border)}
+body.light-theme .covc-spacer{border-right-color:var(--border);border-bottom-color:var(--border)}
+body.light-theme .covc-ok{background:rgba(39,174,96,.1);color:#27ae60}
+body.light-theme .covc-warn{background:rgba(217,119,6,.1);color:#d97706}
+body.light-theme .covc-bad{background:rgba(229,57,53,.1);color:#e53935}
 body.light-theme ::-webkit-scrollbar-track{background:var(--bg3)}
 body.light-theme ::-webkit-scrollbar-thumb{background:var(--border2)}
 /* ── NOTIFICATION BELL ───────────────────────────────────────────────────── */
@@ -748,7 +775,10 @@ function CalendarView({isAdmin=true}){
   const [covMins,setCovMins]=useState({wk:MWK,we:MWE});
   const [emps,setEmps]=useState(EMPS);
   const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
-  useEffect(()=>{fetchCoverageRules().then(rules=>setCovMins(parseCovMins(rules)));},[]);
+  // Reload coverage rules on mount and whenever admin saves changes
+  const [covVer,setCovVer]=useState(window.__coverageVersion||0);
+  useEffect(()=>{const iv=setInterval(()=>{const v=window.__coverageVersion||0;if(v!==covVer)setCovVer(v);},1000);return()=>clearInterval(iv);},[covVer]);
+  useEffect(()=>{fetchCoverageRules().then(rules=>setCovMins(parseCovMins(rules)));},[covVer]);
   useEffect(()=>{
     sb.from('employees').select('full_name,short_name,role').eq('active',true).order('full_name').then(({data})=>{
       if(data&&data.length>0){
@@ -878,22 +908,6 @@ function CalendarView({isAdmin=true}){
                   </th>
                 ))}
               </tr>
-              <tr style={{background:'var(--bg4)'}}>
-                <td className="name-cell" style={{fontSize:10,color:'var(--text3)',padding:'2px 10px'}}>Cob. M/T/N</td>
-                {cov.map(({m,t,n},i)=>{
-                  const info=di[i],mr=info.we?covMins.we:covMins.wk;
-                  const okM=m>=mr.M,okT=t>=mr.T,okN=n>=mr.N,all=okM&&okT&&okN;
-                  return(<td key={i} className={tdcls(info)} style={{padding:'2px 1px'}}>
-                    <div title={`M:${m}/${mr.M} T:${t}/${mr.T} N:${n}/${mr.N}`}
-                      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:0,margin:'0 auto',padding:'2px 0',
-                        background:all?'rgba(79,201,122,.1)':'rgba(247,95,95,.08)',borderRadius:3}}>
-                      <span style={{fontSize:7,fontFamily:'var(--mono)',color:okM?'var(--green)':'var(--red)',lineHeight:1.4,fontWeight:600}}>{m}/{mr.M}</span>
-                      <span style={{fontSize:7,fontFamily:'var(--mono)',color:okT?'var(--green)':'var(--red)',lineHeight:1.4,fontWeight:600}}>{t}/{mr.T}</span>
-                      <span style={{fontSize:7,fontFamily:'var(--mono)',color:okN?'var(--green)':'var(--red)',lineHeight:1.4,fontWeight:600}}>{n}/{mr.N}</span>
-                    </div>
-                  </td>);
-                })}
-              </tr>
             </thead>
             <tbody>
               {emps.map(emp=>(
@@ -916,6 +930,72 @@ function CalendarView({isAdmin=true}){
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              {/* ── Separador + título ── */}
+              <tr>
+                <td colSpan={days+1} style={{padding:'6px 12px 4px',borderTop:'2px solid var(--border2)',background:'var(--bg3)'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontSize:13}}>📊</span>
+                    <span style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.1em',color:'var(--text3)'}}>Cobertura diaria</span>
+                    <div style={{display:'flex',gap:12,marginLeft:'auto'}}>
+                      {[['var(--green)','Cumple mínimo'],['var(--amber)','Justo (−1)'],['var(--red)','Insuficiente']].map(([c,l])=>(
+                        <span key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--text2)'}}>
+                          <span style={{width:7,height:7,borderRadius:'50%',background:c,display:'inline-block'}}></span>{l}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {/* ── Mañana ── */}
+              <tr style={{background:'var(--bg3)'}}>
+                <td className="name-cell" style={{padding:'4px 10px',borderBottom:'1px solid rgba(42,51,80,.25)'}}>
+                  <span style={{display:'flex',alignItems:'center',gap:6,fontSize:11,fontWeight:600,color:'var(--text2)'}}>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:'#7eb8f7',flexShrink:0,display:'inline-block'}}></span>
+                    Mañana<span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>≥{covMins.wk.M}/{covMins.we.M}</span>
+                  </span>
+                </td>
+                {cov.map(({m},i)=>{
+                  const mr=(di[i].we?covMins.we:covMins.wk).M;
+                  const cls=m>=mr?'covc-ok':m>=mr-1?'covc-warn':'covc-bad';
+                  return(<td key={i} className={tdcls(di[i])} style={{padding:'4px 2px',textAlign:'center',borderBottom:'1px solid rgba(42,51,80,.25)'}}>
+                    <span className={`covc-pill ${cls}`}>{m}/{mr}</span>
+                  </td>);
+                })}
+              </tr>
+              {/* ── Tarde ── */}
+              <tr style={{background:'var(--bg3)'}}>
+                <td className="name-cell" style={{padding:'4px 10px',borderBottom:'1px solid rgba(42,51,80,.25)'}}>
+                  <span style={{display:'flex',alignItems:'center',gap:6,fontSize:11,fontWeight:600,color:'var(--text2)'}}>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:'#f7b84f',flexShrink:0,display:'inline-block'}}></span>
+                    Tarde<span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>≥{covMins.wk.T}/{covMins.we.T}</span>
+                  </span>
+                </td>
+                {cov.map(({t},i)=>{
+                  const mr=(di[i].we?covMins.we:covMins.wk).T;
+                  const cls=t>=mr?'covc-ok':t>=mr-1?'covc-warn':'covc-bad';
+                  return(<td key={i} className={tdcls(di[i])} style={{padding:'4px 2px',textAlign:'center',borderBottom:'1px solid rgba(42,51,80,.25)'}}>
+                    <span className={`covc-pill ${cls}`}>{t}/{mr}</span>
+                  </td>);
+                })}
+              </tr>
+              {/* ── Noche ── */}
+              <tr style={{background:'var(--bg3)'}}>
+                <td className="name-cell" style={{padding:'4px 10px'}}>
+                  <span style={{display:'flex',alignItems:'center',gap:6,fontSize:11,fontWeight:600,color:'var(--text2)'}}>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:'#c084fc',flexShrink:0,display:'inline-block'}}></span>
+                    Noche<span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>≥{covMins.wk.N}/{covMins.we.N}</span>
+                  </span>
+                </td>
+                {cov.map(({n},i)=>{
+                  const mr=(di[i].we?covMins.we:covMins.wk).N;
+                  const cls=n>=mr?'covc-ok':n>=mr-1?'covc-warn':'covc-bad';
+                  return(<td key={i} className={tdcls(di[i])} style={{padding:'4px 2px',textAlign:'center'}}>
+                    <span className={`covc-pill ${cls}`}>{n}/{mr}</span>
+                  </td>);
+                })}
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -1570,6 +1650,7 @@ function AdminView(){
     for(const r of draftRules){await saveCoverageRule({id:r.id,label:r.label,weekday_value:r.weekday_value,weekend_value:r.weekend_value,unit:r.unit,sort_order:r.sort_order||0});}
     const fresh=await fetchCoverageRules();
     if(fresh.length>0)setRules(fresh);
+    window.__coverageVersion=(window.__coverageVersion||0)+1;
     setEditRules(false);setDraftRules(null);setRuleSaving(false);
   };
   const updateDraft=(id,field,val)=>setDraftRules(d=>d.map(r=>r.id===id?{...r,[field]:val}:r));
@@ -1583,6 +1664,7 @@ function AdminView(){
     await insertRule(r);
     const fresh=await fetchCoverageRules();
     if(fresh.length>0)setRules(fresh);
+    window.__coverageVersion=(window.__coverageVersion||0)+1;
     setNewRule({label:'',weekday:'',weekend:'',unit:'operadores'});
     setShowAddRule(false);
   };
