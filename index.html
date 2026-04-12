@@ -290,7 +290,7 @@ async function fetchShiftsForMonth(monthIdx) {
   const key = `2026-${String(monthIdx+1).padStart(2,'0')}`;
   if (shiftsCache[key]) return shiftsCache[key];
   const start = `${key}-01`;
-  const end = `${key}-31`;
+  const end = `${key}-${String(MD[monthIdx]).padStart(2,'0')}`;
   const { data, error } = await sb
     .from('shifts')
     .select('shift_date, shift_type, employee:employee_id(short_name)')
@@ -760,6 +760,8 @@ function CalendarView({isAdmin=true}){
 
   const [dbShifts,setDbShifts]=useState({});
   const [calLoading,setCalLoading]=useState(false);
+  const [batchSaving,setBatchSaving]=useState(false);
+  const [batchErr,setBatchErr]=useState(null);
   // Force fresh fetch when: month changes OR calendar version changes (after approval)
   const [calVer, setCalVer] = React.useState(window.__calendarVersion||0);
   useEffect(()=>{
@@ -804,18 +806,24 @@ function CalendarView({isAdmin=true}){
 
   const applyBatch=async()=>{
     if(!sel)return;
-    // Save each changed day to DB
+    setBatchSaving(true);setBatchErr(null);
     const empKey=empShortMap[sel.emp]||EMP_SHORT[sel.emp]||sel.emp;
-    const savePromises=[...sel.days].map(dayIdx=>{
+    const results=await Promise.all([...sel.days].map(dayIdx=>{
       const date=`2026-${String(mi+1).padStart(2,'0')}-${String(dayIdx+1).padStart(2,'0')}`;
       return saveShift(empKey, date, batchShift);
-    });
-    await Promise.all(savePromises);
-    // Refresh month data + notificar a otros componentes (TeamView, TodayView)
+    }));
+    const errors=results.filter(r=>r?.error);
+    if(errors.length>0){
+      setBatchErr(`Error al guardar: ${errors[0].error?.message||errors[0].error}`);
+      setBatchSaving(false);return;
+    }
+    // Invalidar caché y refrescar
+    const mk=`2026-${String(mi+1).padStart(2,'0')}`;
+    delete shiftsCache[mk];
     window.__calendarVersion=(window.__calendarVersion||0)+1;
     const updated=await fetchShiftsForMonth(mi);
     setDbShifts(updated);
-    setSel(null);setBatchModal(false);
+    setBatchSaving(false);setSel(null);setBatchModal(false);
   };
 
   const clearSel=()=>setSel(null);
@@ -913,7 +921,7 @@ function CalendarView({isAdmin=true}){
       </div>
 
       {batchModal&&sel&&(
-        <div className="modal-overlay" onClick={()=>setBatchModal(false)}>
+        <div className="modal-overlay" onClick={()=>{if(!batchSaving){setBatchModal(false);setBatchErr(null);}}}>
           <div className="modal" style={{maxWidth:380}} onClick={e=>e.stopPropagation()}>
             <div className="modal-title">Asignar turno en bloque</div>
             <div className="modal-sub">
@@ -933,10 +941,11 @@ function CalendarView({isAdmin=true}){
                 </button>
               ))}
             </div>
+            {batchErr&&<div className="login-err" style={{marginBottom:10,padding:'6px 10px',fontSize:12}}>⚠ {batchErr}</div>}
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-              <button className="btn btn-ghost" onClick={()=>setBatchModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={applyBatch}>
-                Aplicar a {sel.days.size} día{sel.days.size!==1?'s':''}
+              <button className="btn btn-ghost" disabled={batchSaving} onClick={()=>{setBatchModal(false);setBatchErr(null);}}>Cancelar</button>
+              <button className="btn btn-primary" disabled={batchSaving} onClick={applyBatch}>
+                {batchSaving?'Guardando…':`Aplicar a ${sel.days.size} día${sel.days.size!==1?'s':''}`}
               </button>
             </div>
           </div>
@@ -2035,7 +2044,10 @@ function OperatorDashboard({user}){
 
   const userShifts=useMemo(()=>{
     const sn=user.short_name;
-    return monthData[sn]||Array(MD[selMonth]).fill('');
+    const mk=MONTHS[selMonth];
+    const staticRow=(SD[mk]||{})[sn]||[];
+    const dbRow=monthData[sn]||[];
+    return Array.from({length:MD[selMonth]},(_,i)=>dbRow[i]||staticRow[i]||'');
   },[monthData,user.short_name,selMonth]);
 
   const stats=useMemo(()=>{
