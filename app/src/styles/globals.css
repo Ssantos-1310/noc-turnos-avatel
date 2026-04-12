@@ -1,0 +1,47 @@
+/* ── RESET & CSS VARIABLES ─────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2435;--bg4:#252d42;
+  --border:#2a3350;--border2:#3a4566;
+  --text:#e8eaf2;--text2:#8892b0;--text3:#4a5578;
+  --blue:#4f8ef7;--blue2:#1e3a6e;--blue3:#0d1f3c;
+  --teal:#00d9b8;--amber:#f7b84f;--amber2:#7a5520;
+  --red:#f75f5f;--red2:#5c1f1f;
+  --green:#4fc97a;--green2:#1a4d2e;
+  --orange:#fb923c;--orange2:#7c3612;--orange3:#3d1a08;
+  --weekend-bg:rgba(79,142,247,0.07);
+  --weekend-border:rgba(79,142,247,0.3);
+  --festivo-bg:rgba(247,184,79,0.13);
+  --festivo-border:rgba(247,184,79,0.55);
+  --radius:10px;--radius-sm:6px;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font);
+  font-size:14px;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+button{
+  cursor:pointer;
+  border:none;
+  background:none;
+  font-family:var(--font);
+  font-size:14px;
+  color:var(--text);
+}
+
+input,select,textarea{
+  font-family:var(--font);
+  font-size:14px;
+}
+
+/* ── SCROLLBAR ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
