@@ -1176,17 +1176,28 @@ function TeamView(){
             {vacas.map(e=><div key={e} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}><span className="pill pill-warn" style={{fontSize:10,padding:'1px 6px'}}>Vacac.</span><span style={{color:'var(--text2)'}}>{e.split(' ')[0]}</span></div>)}
           </div>
         </div>
-        {/* Horas acumuladas — dinámico */}
+        {/* TOP HORAS EXTRA */}
         <div className="stat">
-          <div className="stat-label">Horas acumuladas</div>
-          <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:8}}>
-            <span className="stat-val" style={{color:'var(--blue)'}}>{totalHours}h</span>
-            <span style={{fontSize:11,color:'var(--text3)'}}>/ {HMAX}h ref.</span>
-          </div>
-          <div style={{height:5,background:'var(--bg4)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-            <div style={{height:'100%',background:'var(--blue)',borderRadius:3,width:`${Math.min(totalHours/HMAX*100,100).toFixed(1)}%`,transition:'width .4s'}}/>
-          </div>
-          <div className="stat-sub">{totalJornadas} jornadas · {emps.length} ops.</div>
+          <div className="stat-label">Horas Extra</div>
+          {(()=>{
+            const totalExtra=ed.reduce((s,e)=>s+e.eh,0);
+            const top3=[...ed].filter(e=>e.eh>0).sort((a,b)=>b.eh-a.eh).slice(0,3);
+            return(<>
+              <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:8}}>
+                <span className="stat-val" style={{color:'var(--blue)'}}>{totalExtra}h</span>
+                <span style={{fontSize:11,color:'var(--text3)'}}>total equipo</span>
+              </div>
+              {top3.length===0
+                ?<span style={{fontSize:12,color:'var(--text3)'}}>Sin horas extra</span>
+                :<div style={{display:'flex',flexDirection:'column',gap:4}}>
+                  {top3.map(e=><div key={e.emp} style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                    <span style={{color:'var(--text2)'}}>{e.emp.split(' ')[0]}</span>
+                    <span style={{color:'var(--blue)',fontWeight:600}}>{e.eh}h</span>
+                  </div>)}
+                </div>
+              }
+            </>);
+          })()}
         </div>
         {/* Alertas horas */}
         <div className="stat">
@@ -2974,7 +2985,14 @@ function CalN2View(){
 function ResumenRRHH(){
   const today=new Date();
   const [selMonth,setSelMonth]=useState(today.getMonth());
-  const [n2Assigns]=useState(()=>{const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%2];});return a;});
+  const [n2Assigns,setN2Assigns]=useState({});
+  useEffect(()=>{
+    fetchN2Assignments().then(rows=>{
+      const a={};
+      (rows||[]).forEach(d=>{a[d.week_number]=d.employee?.full_name||'';});
+      setN2Assigns(a);
+    });
+  },[]);
   const [extraRows,setExtraRows]=useState([]);
   const [showAddRow,setShowAddRow]=useState(false);
   const [newRow,setNewRow]=useState({emp:'',tipo:'horas_extra',horas:'',fecha:'',desc:''});
@@ -3039,10 +3057,9 @@ function ResumenRRHH(){
       const approver=getApprover(emp);
 
       if(horasExtra>0)result.push({emp,approver,tipo:'Horas Extra',horasExtra,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:festDates.slice(0,4).join(', ')||'',desc:'Horas extraordinarias'});
-      if(horasFestivos>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:[...nDates,...festDates].slice(0,4).join(', ')||'',desc:'Turno nocturno y/o festivo'});
+      if(horasFestivos>0||plusNoc>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,fecha:[...nDates,...festDates].slice(0,4).join(', ')||'',desc:'Turno nocturno y/o festivo'+(plusNoc>0?' · '+plusNoc+' noches':'')});
       if(guardiaImp>0)result.push({emp,approver,tipo:'Guardia N2',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:guardiaImp,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 semanal'});
       if(guardiaFestImp>0)result.push({emp,approver,tipo:'Guardia N2 Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:guardiaFestImp,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.filter(w=>weekHasFestivo(w)).map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 festivo'});
-      if(plusNoc>0)result.push({emp,approver,tipo:'Plus NOC',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,fecha:'',desc:'Plus nocturnidad — '+plusNoc+' noches'});
     });
     extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
     return result;
