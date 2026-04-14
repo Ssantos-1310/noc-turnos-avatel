@@ -67,6 +67,7 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .badge-V{background:#1a3d2a;color:#4fc97a}
 .badge-B{background:#3d1a1a;color:#f75f5f}
 .badge-D{background:var(--orange3);color:var(--orange)}
+.badge-DN{background:rgba(239,68,68,.15);color:#f87171}
 .badge-O{background:#2d2a1a;color:#fbbf24}
 .badge-P{background:#1a2e2e;color:#2dd4bf}
 .badge-empty{background:transparent;color:var(--text3)}
@@ -251,6 +252,7 @@ body.light-theme .badge-N{background:#ede9fe;color:#6d28d9}
 body.light-theme .badge-V{background:#dcfce7;color:#16a34a}
 body.light-theme .badge-B{background:#fee2e2;color:#dc2626}
 body.light-theme .badge-D{background:#ffedd5;color:#ea580c}
+body.light-theme .badge-DN{background:#fee2e2;color:#dc2626}
 body.light-theme .badge-O{background:#fef9c3;color:#92400e}
 body.light-theme .badge-P{background:#ccfbf1;color:#0d9488}
 body.light-theme .pill-purple{background:#ede9fe;color:#6d28d9}
@@ -654,7 +656,7 @@ const MONTHS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto",
 const MN=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MD=[31,28,31,30,31,30,31,31,30,31,30,31];
 const DN=["D","L","M","X","J","V","S"];
-const SL={M:'Mañana',T:'Tarde',N:'Noche',V:'Vacaciones',B:'Baja',D:'Horas extras',O:'Oficina',P:'Asuntos propios'};
+const SL={M:'Mañana',T:'Tarde',N:'Noche',V:'Vacaciones',B:'Baja',D:'Horas extras',DN:'D Fest./Noche',O:'Oficina',P:'Asuntos propios'};
 const HMAX=1624,JMAX=203,VMAX=23;
 const MWK={M:4,T:4,N:2},MWE={M:2,T:2,N:2};
 const REQS=[
@@ -1012,17 +1014,40 @@ function CalendarView({isAdmin=true}){
                 Días: {[...sel.days].sort((a,b)=>a-b).map(d=>d+1).join(', ')}
               </div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:20}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:(batchShift==='D'||batchShift==='DN')?8:20}}>
               {['M','T','N','V','B','D','O',''].map(s=>(
-                <button key={s||'x'} onClick={()=>setBatchShift(s)}
+                <button key={s||'x'} onClick={()=>setBatchShift(s==='D'&&(batchShift!=='D'&&batchShift!=='DN')?'D':s||'')}
                   style={{padding:'10px 4px',borderRadius:6,border:'2px solid',cursor:'pointer',
-                    borderColor:batchShift===s?'var(--blue)':'var(--border)',
-                    background:batchShift===s?'var(--blue3)':'var(--bg3)',
+                    borderColor:(batchShift===s||(s==='D'&&batchShift==='DN'))?'var(--blue)':'var(--border)',
+                    background:(batchShift===s||(s==='D'&&batchShift==='DN'))?'var(--blue3)':'var(--bg3)',
                     display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
                   <Bdg s={s}/><span style={{fontSize:10,color:'var(--text2)'}}>{s?SL[s]:'Libre'}</span>
                 </button>
               ))}
             </div>
+            {(batchShift==='D'||batchShift==='DN')&&(
+              <div style={{marginBottom:20,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'10px 12px'}}>
+                <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Rango horario del turno D</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <button onClick={()=>setBatchShift('D')}
+                    style={{padding:'8px 6px',borderRadius:6,border:'2px solid',cursor:'pointer',
+                      borderColor:batchShift==='D'?'var(--orange)':'var(--border)',
+                      background:batchShift==='D'?'var(--orange3)':'var(--bg4)',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                    <span style={{fontSize:12,fontWeight:700,color:'var(--orange)'}}>07:00 – 22:00</span>
+                    <span style={{fontSize:10,color:'var(--text3)'}}>Horas Extra</span>
+                  </button>
+                  <button onClick={()=>setBatchShift('DN')}
+                    style={{padding:'8px 6px',borderRadius:6,border:'2px solid',cursor:'pointer',
+                      borderColor:batchShift==='DN'?'#f87171':'var(--border)',
+                      background:batchShift==='DN'?'rgba(239,68,68,.1)':'var(--bg4)',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                    <span style={{fontSize:12,fontWeight:700,color:'#f87171'}}>22:00 – 07:00</span>
+                    <span style={{fontSize:10,color:'var(--text3)'}}>Horas Festivos</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {batchErr&&<div className="login-err" style={{marginBottom:10,padding:'6px 10px',fontSize:12}}>⚠ {batchErr}</div>}
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
               <button className="btn btn-ghost" disabled={batchSaving} onClick={()=>{setBatchModal(false);setBatchErr(null);}}>Cancelar</button>
@@ -1122,6 +1147,7 @@ function TeamView(){
     if(s==='T')return{label:'Tarde',cls:'pill-amber',av:'#f7b84f'};
     if(s==='N')return{label:'Noche',cls:'pill-purple',av:'#c084fc'};
     if(s==='D')return{label:'H. extras',cls:'pill-warn',av:'#f7b84f'};
+    if(s==='DN')return{label:'D Noche',cls:'pill-bad',av:'#f87171'};
     if(s==='O')return{label:'Onboarding',cls:'pill-neutral',av:'var(--text3)'};
     return{label:'Libre',cls:'pill-ok',av:'var(--green)'};
   }
@@ -2236,7 +2262,7 @@ function OperatorDashboard({user}){
       if(s.shift_type==='M')m++;
       else if(s.shift_type==='T')t++;
       else if(s.shift_type==='N')n++;
-      else if(s.shift_type==='D')d++;
+      else if(s.shift_type==='D'||s.shift_type==='DN')d++;
       else if(s.shift_type==='P')a++;
     });
     return{m,t,n,d,a,jornadas:m+t+n+a,horas:(m+t+n+a)*8};
@@ -3050,6 +3076,7 @@ function ResumenRRHH(){
           if(esFestivo||esDomingo){horasFestivos+=8;dFestDates.push(dayStr);}
           else{horasExtra+=8;dExtraDates.push(dayStr);}
         }
+        if(shift==='DN'){horasFestivos+=8;dFestDates.push(dayStr);}  // D nocturno → siempre Horas Festivos
         if(shift==='N'){plusNoc++;nDates.push(dayStr);}
         if((shift==='M'||shift==='T')&&esFestivo){compFest++;mtFestDates.push(dayStr);}
       }
