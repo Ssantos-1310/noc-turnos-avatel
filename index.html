@@ -3057,9 +3057,10 @@ function ResumenRRHH(){
       const approver=getApprover(emp);
 
       if(horasExtra>0)result.push({emp,approver,tipo:'Horas Extra',horasExtra,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:festDates.slice(0,4).join(', ')||'',desc:'Horas extraordinarias'});
-      if(horasFestivos>0||plusNoc>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,fecha:[...nDates,...festDates].slice(0,4).join(', ')||'',desc:'Turno nocturno y/o festivo'+(plusNoc>0?' · '+plusNoc+' noches':'')});
+      if(horasFestivos>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:[...nDates,...festDates].slice(0,4).join(', ')||'',desc:'Turno nocturno y/o festivo'});
       if(guardiaImp>0)result.push({emp,approver,tipo:'Guardia N2',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:guardiaImp,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 semanal'});
       if(guardiaFestImp>0)result.push({emp,approver,tipo:'Guardia N2 Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:guardiaFestImp,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.filter(w=>weekHasFestivo(w)).map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 festivo'});
+      if(plusNoc>0)result.push({emp,approver,tipo:'Plus NOC',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,fecha:'',desc:'Plus nocturnidad — '+plusNoc+' noches'});
     });
     extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
     return result;
@@ -3130,7 +3131,7 @@ function ResumenRRHH(){
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)'}}>{mesNum}</td>
                     <td style={{padding:'8px 10px',fontWeight:500,whiteSpace:'nowrap'}}>
                       <div>{r.emp}</div>
-                      {(r.tipo==='Plus NOC'||r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo')&&(
+                      {(r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo')&&(
                         <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{r.tipo}</div>
                       )}
                     </td>
