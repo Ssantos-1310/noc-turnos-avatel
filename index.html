@@ -2226,10 +2226,8 @@ function OperatorDashboard({user}){
 
   const userShifts=useMemo(()=>{
     const sn=user.short_name;
-    const mk=MONTHS[selMonth];
-    const staticRow=(SD[mk]||{})[sn]||[];
     const dbRow=monthData[sn]||[];
-    return Array.from({length:MD[selMonth]},(_,i)=>dbRow[i]||staticRow[i]||'');
+    return Array.from({length:MD[selMonth]},(_,i)=>dbRow[i]||'');
   },[monthData,user.short_name,selMonth]);
 
   const stats=useMemo(()=>{
@@ -3037,15 +3035,23 @@ function ResumenRRHH(){
     const days=MD[selMonth];
     emps.forEach(emp=>{
       const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
-      let horasExtra=0,horasFestivos=0,plusNoc=0;
-      const festDates=[],nDates=[];
+      // D shifts → Horas Extra (Mon-Sat, no festivo) o Horas Festivos (Dom o festivo)
+      // N shifts → Plus NOC únicamente
+      // M/T en festivo (14 días hardcodeados, NO domingos) → Complemento Festivo 40€/día
+      let horasExtra=0,horasFestivos=0,plusNoc=0,compFest=0;
+      const dExtraDates=[],dFestDates=[],nDates=[],mtFestDates=[];
       for(let i=0;i<days;i++){
         const shift=(md[empKey]||[])[i]||'';
         const d=new Date(2026,selMonth,i+1);
-        const isFestD=isFest(selMonth,i+1)||d.getDay()===0;
-        if(shift==='D'){if(isFestD)horasFestivos+=8;else horasExtra+=8;}
-        if(shift==='N'){plusNoc++;horasFestivos+=8;nDates.push((i+1)+'/'+mesNum);}
-        if((shift==='M'||shift==='T')&&isFestD){horasFestivos+=8;festDates.push((i+1)+'/'+mesNum);}
+        const esFestivo=isFest(selMonth,i+1);      // solo los 14 días hardcodeados, sin domingos
+        const esDomingo=d.getDay()===0;
+        const dayStr=(i+1)+'/'+mesNum;
+        if(shift==='D'){
+          if(esFestivo||esDomingo){horasFestivos+=8;dFestDates.push(dayStr);}
+          else{horasExtra+=8;dExtraDates.push(dayStr);}
+        }
+        if(shift==='N'){plusNoc++;nDates.push(dayStr);}
+        if((shift==='M'||shift==='T')&&esFestivo){compFest++;mtFestDates.push(dayStr);}
       }
       // N2 guardias for this person this month
       const myWeeks=WEEKS_2026.filter(w=>{
@@ -3056,17 +3062,18 @@ function ResumenRRHH(){
       const guardiaFestImp=myWeeks.filter(w=>weekHasFestivo(w)).length*GUARDIA_N2_FESTIVO_IMPORTE;
       const approver=getApprover(emp);
 
-      if(horasExtra>0)result.push({emp,approver,tipo:'Horas Extra',horasExtra,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:festDates.slice(0,4).join(', ')||'',desc:'Horas extraordinarias'});
-      if(horasFestivos>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:[...nDates,...festDates].slice(0,4).join(', ')||'',desc:'Turno nocturno y/o festivo'});
-      if(guardiaImp>0)result.push({emp,approver,tipo:'Guardia N2',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:guardiaImp,guardiasFE:0,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 semanal'});
-      if(guardiaFestImp>0)result.push({emp,approver,tipo:'Guardia N2 Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:guardiaFestImp,comisiones:0,km:0,plusNoc:0,fecha:myWeeks.filter(w=>weekHasFestivo(w)).map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 festivo'});
-      if(plusNoc>0)result.push({emp,approver,tipo:'Plus NOC',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,fecha:'',desc:'Plus nocturnidad — '+plusNoc+' noches'});
+      if(horasExtra>0)result.push({emp,approver,tipo:'Horas Extra',horasExtra,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:0,fecha:dExtraDates.slice(0,4).join(', ')||'',desc:'Horas extraordinarias (turno D)'});
+      if(horasFestivos>0)result.push({emp,approver,tipo:'Horas Festivos/Noche',horasExtra:0,horasFestivos,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:0,fecha:dFestDates.slice(0,4).join(', ')||'',desc:'Turno D en festivo o domingo'});
+      if(guardiaImp>0)result.push({emp,approver,tipo:'Guardia N2',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:guardiaImp,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:0,fecha:myWeeks.map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 semanal'});
+      if(guardiaFestImp>0)result.push({emp,approver,tipo:'Guardia N2 Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:guardiaFestImp,comisiones:0,km:0,plusNoc:0,compFest:0,fecha:myWeeks.filter(w=>weekHasFestivo(w)).map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 festivo'});
+      if(plusNoc>0)result.push({emp,approver,tipo:'Plus NOC',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,compFest:0,fecha:nDates.slice(0,4).join(', ')||'',desc:'Plus nocturnidad — '+plusNoc+' noches'});
+      if(compFest>0)result.push({emp,approver,tipo:'Complemento Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:compFest*40,fecha:mtFestDates.join(', ')||'',desc:'40€/día trabajado en festivo — '+compFest+' día(s)'});
     });
     extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
     return result;
   },[selMonth,n2Assigns,extraRows,md,emps,empShortMap]);
 
-  const COL=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA','Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM','GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC','FECHA Y HORA','DESCRIPCIÓN'];
+  const COL=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA','Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM','GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC','COMP. FESTIVO (€)','FECHA Y HORA','DESCRIPCIÓN'];
 
   return(
     <div>
@@ -3085,16 +3092,16 @@ function ResumenRRHH(){
             const headers=['MES','NOMBRE Y APELLIDOS','DNI','RESPONSABLE QUE VALIDA',
               'Nº HORAS EXTRA','Nº HORAS FESTIVOS','Nº HORAS EXTRA - FM','Nº HORAS FESTIVOS - FM',
               'GUARDIAS (€)','GUARDIAS FESTIVO (€)','COMISIONES (€)','KILOMETRAJE (KM)','PLUS NOC',
-              'FECHA Y HORA','DESCRIPCIÓN DEL TRABAJO'];
+              'COMP. FESTIVO (€)','FECHA Y HORA','DESCRIPCIÓN DEL TRABAJO'];
             const dataRows=rows.map(r=>[
               mesNum, r.emp, '', r.approver,
               r.horasExtra||'', r.horasFestivos||'', r.horasExtraFM||'', r.horasFestFM||'',
               r.guardiasE||'', r.guardiasFE||'', r.comisiones||'', r.km||'',
-              r.plusNoc||'', r.fecha||'', r.desc||''
+              r.plusNoc||'', r.compFest||'', r.fecha||'', r.desc||''
             ]);
             const ws=XLSX.utils.aoa_to_sheet([headers,...dataRows]);
             // Column widths
-            ws['!cols']=[{wch:5},{wch:30},{wch:12},{wch:25},{wch:14},{wch:16},{wch:18},{wch:20},{wch:14},{wch:18},{wch:14},{wch:16},{wch:10},{wch:22},{wch:40}];
+            ws['!cols']=[{wch:5},{wch:30},{wch:12},{wch:25},{wch:14},{wch:16},{wch:18},{wch:20},{wch:14},{wch:18},{wch:14},{wch:16},{wch:10},{wch:16},{wch:22},{wch:40}];
             const wb=XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb,ws,`${MN[selMonth]}-2026`);
             XLSX.writeFile(wb,`RRHH_NOC_${MN[selMonth]}_2026.xlsx`);
@@ -3122,16 +3129,18 @@ function ResumenRRHH(){
                 {rows.map((r,i)=>{
                   const rowAccent = r.tipo==='Plus NOC'?'rgba(192,132,252,.05)':
                                     r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo'?'rgba(251,146,60,.05)':
+                                    r.tipo==='Complemento Festivo'?'rgba(247,184,79,.05)':
                                     i%2===0?'transparent':'rgba(255,255,255,.01)';
                   const rowBorder = r.tipo==='Plus NOC'?'1px solid rgba(192,132,252,.15)':
                                     r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo'?'1px solid rgba(251,146,60,.15)':
+                                    r.tipo==='Complemento Festivo'?'1px solid rgba(247,184,79,.2)':
                                     '1px solid rgba(42,51,80,.3)';
                   return(
                   <tr key={i} style={{borderBottom:rowBorder,background:rowAccent}}>
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)'}}>{mesNum}</td>
                     <td style={{padding:'8px 10px',fontWeight:500,whiteSpace:'nowrap'}}>
                       <div>{r.emp}</div>
-                      {(r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo')&&(
+                      {(r.tipo==='Guardia N2'||r.tipo==='Guardia N2 Festivo'||r.tipo==='Plus NOC'||r.tipo==='Complemento Festivo')&&(
                         <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{r.tipo}</div>
                       )}
                     </td>
@@ -3146,9 +3155,9 @@ function ResumenRRHH(){
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:'var(--text3)'}}>–</td>
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:'var(--text3)'}}>–</td>
                     <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.plusNoc>0?'#c084fc':'var(--text3)'}}>{r.plusNoc||'–'}</td>
+                    <td style={{padding:'8px 10px',fontFamily:'var(--mono)',textAlign:'center',color:r.compFest>0?'var(--amber)':'var(--text3)',fontWeight:r.compFest>0?600:400}}>{r.compFest?r.compFest+'€':'–'}</td>
                     <td style={{padding:'8px 10px',color:'var(--text2)',fontSize:10,whiteSpace:'nowrap'}}>{r.fecha||'–'}</td>
                     <td style={{padding:'8px 10px',color:'var(--text2)',maxWidth:160,fontSize:11}}>{r.desc}</td>
-
                   </tr>
                 );})}
               </tbody>
@@ -3195,7 +3204,7 @@ function ResumenRRHH(){
                   horasExtraFM:newRow.tipo==='horas_fm'?h:0,horasFestFM:0,
                   guardiasE:newRow.tipo==='guardia'?h:0,guardiasFE:0,
                   comisiones:newRow.tipo==='comision'?h:0,km:newRow.tipo==='km'?h:0,
-                  plusNoc:0,fecha:newRow.fecha,desc:newRow.desc,month:selMonth};
+                  plusNoc:0,compFest:0,fecha:newRow.fecha,desc:newRow.desc,month:selMonth};
                 setExtraRows(p=>[...p,row]);
                 setNewRow({emp:'',tipo:'horas_extra',horas:'',fecha:'',desc:''});
                 setShowAddRow(false);
