@@ -303,6 +303,16 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const EF_URL = `${SUPABASE_URL}/functions/v1`; // Edge Functions base URL
 
+// ── CONTRASEÑA TEMPORAL SEGURA ────────────────────────────────────────────────
+// Genera contraseña aleatoria de 12 caracteres usando Web Crypto API
+// Compatible con cualquier infraestructura moderna (no depende de Supabase)
+function genTempPassword(){
+  const chars='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+  const arr=new Uint8Array(12);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b=>chars[b%chars.length]).join('');
+}
+
 // ── AUDIT LOG ─────────────────────────────────────────────────────────────────
 async function logAudit(action, details={}, actorId=null){
   try{
@@ -316,6 +326,15 @@ async function logAudit(action, details={}, actorId=null){
 // ── DB HELPERS ────────────────────────────────────────────────────────────────
 // Cache to avoid re-fetching same month
 const shiftsCache = {};
+
+// Fetch festivos from DB — updates festDates module variable
+// Fallback: hardcoded FEST_FALLBACK is used if fetch fails
+async function fetchFestivos(){
+  try{
+    const{data}=await sb.from('festivos').select('fecha');
+    if(data&&data.length>0)festDates=new Set(data.map(f=>f.fecha));
+  }catch(e){/* use hardcoded fallback */}
+}
 
 async function fetchShiftsForMonth(monthIdx) {
   const key = `2026-${String(monthIdx+1).padStart(2,'0')}`;
@@ -644,13 +663,12 @@ const SD={"enero":{"Zhou Hongxuan":["","","","","","","","","","","","","","",""
 
 const REC={"Zhou Hongxuan":{"M":39,"T":34,"N":28,"V":0,"B":2,"D":0,"h":824},"Hector Verdu":{"M":57,"T":22,"N":21,"V":4,"B":0,"D":0,"h":832},"Manuel Saelices":{"M":15,"T":26,"N":7,"V":0,"B":55,"D":0,"h":824},"Sergio Vara":{"M":29,"T":45,"N":21,"V":5,"B":0,"D":0,"h":824},"Francisco Castaño":{"M":43,"T":35,"N":18,"V":0,"B":0,"D":3,"h":800},"Mario Saavedra":{"M":32,"T":35,"N":32,"V":0,"B":0,"D":1,"h":816},"Juan Carlos":{"M":34,"T":35,"N":21,"V":4,"B":0,"D":0,"h":816},"Carlos Alberto":{"M":31,"T":39,"N":28,"V":0,"B":0,"D":4,"h":824},"Ruben Culebras":{"M":23,"T":46,"N":31,"V":3,"B":0,"D":1,"h":824},"Sergio Luque":{"M":37,"T":33,"N":21,"V":11,"B":0,"D":1,"h":816},"Valentina Vargas":{"M":38,"T":46,"N":21,"V":0,"B":0,"D":0,"h":840},"Pedro Ayuso":{"M":43,"T":34,"N":19,"V":0,"B":0,"D":0,"h":840},"Hector Lamus":{"M":36,"T":34,"N":21,"V":0,"B":7,"D":1,"h":800},"Leandro Yorlan":{"M":43,"T":39,"N":21,"V":0,"B":0,"D":3,"h":824}};
 
-// Festivos oficiales Comunidad de Madrid 2026 (calendario laboral CAM)
-// Eliminados: 24-jun (San Juan, no aplica Madrid) y 25-jul (Santiago, no aplica CAM)
-// 1-nov cae domingo → trasladado al lunes 2-nov; 7-dic puente antes de la Inmaculada (8-dic martes)
-const FEST=["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07","2026-12-08","2026-12-25"];
-const EMPS=["Hector Jose Lamus Moreno","Hector Verdu Relaño","Francisco Castaño Montouto","Mario Saavedra Mateo","Ruben Culebras Blanco","Manuel Saelices Escolar","Marianela Beatriz Vasquez Guardia","Pedro Pablo Ayuso Muñoz","Juan Carlos Farfan Mallaupoma","Leandro Yorlan Roman Jaimes","Sergio Vara","Zhou Hongxuan","Valentina Vargas Moreno","Sergio Luque Lavado","Carlos Alberto Hilleshein","Manuel Loro Sanchez de Pablo","Jose Luis Carrillo Sierra"];
-// Short name → full name mapping for shift data lookup
-const EMP_SHORT={"Hector Jose Lamus Moreno":"Hector Lamus","Hector Verdu Relaño":"Hector Verdu","Francisco Castaño Montouto":"Francisco Castaño","Mario Saavedra Mateo":"Mario Saavedra","Ruben Culebras Blanco":"Ruben Culebras","Manuel Saelices Escolar":"Manuel Saelices","Marianela Beatriz Vasquez Guardia":"Marianela Beatriz","Pedro Pablo Ayuso Muñoz":"Pedro Ayuso","Juan Carlos Farfan Mallaupoma":"Juan Carlos","Leandro Yorlan Roman Jaimes":"Leandro Yorlan","Sergio Vara":"Sergio Vara","Zhou Hongxuan":"Zhou Hongxuan","Valentina Vargas Moreno":"Valentina Vargas","Sergio Luque Lavado":"Sergio Luque","Carlos Alberto Hilleshein":"Carlos Alberto","Manuel Loro Sanchez de Pablo":"Manuel Loro","Jose Luis Carrillo Sierra":"Jose Luis Carrillo"};
+// Festivos — fallback hardcodeado; se actualiza desde BD al arrancar (ver fetchFestivos)
+// Al migrar de infraestructura: solo cambiar fetchFestivos() para apuntar al nuevo endpoint
+const FEST_FALLBACK=["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-05-15","2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07","2026-12-08","2026-12-25"];
+let festDates=new Set(FEST_FALLBACK); // actualizado desde BD en App.useEffect
+const EMPS=[];      // poblado dinamicamente desde BD
+const EMP_SHORT={}; // poblado dinamicamente desde BD
 const MONTHS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const MN=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MD=[31,28,31,30,31,30,31,31,30,31,30,31];
@@ -675,7 +693,7 @@ const INIT_RULES=[
   {id:7,label:'Horas extras máx. (D)',weekday:80,weekend:null,unit:'horas/año'},
 ];
 
-const isFest=(mi,d)=>FEST.includes(`2026-${String(mi+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+const isFest=(mi,d)=>festDates.has(`2026-${String(mi+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
 const isWE=(mi,d)=>[0,6].includes(new Date(2026,mi,d).getDay());
 const isTod=(mi,d)=>new Date(2026,mi,d).toDateString()===new Date().toDateString();
 
@@ -1707,6 +1725,9 @@ function AdminView(){
   const [empSaving,setEmpSaving]=useState(false);
   const [newUser,setNewUser]=useState({role:'operator',firstName:'',lastName:'',email:'',joinDate:'',baseShift:'M'});
   const [newUErr,setNewUErr]=useState('');
+  const [createdTempPwd,setCreatedTempPwd]=useState(null); // contraseña temporal generada tras alta
+  const [confirmPwd,setConfirmPwd]=useState('');           // confirmación al resetear contraseña
+  const [pwdResetMsg,setPwdResetMsg]=useState('');         // feedback reset contraseña
   const diagResultsRef=React.useRef(null);
   const [diagResults,setDiagResults]=useState(null);
   const [diagLoading,setDiagLoading]=useState(false);
@@ -1726,23 +1747,26 @@ function AdminView(){
     const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'.');
     const username=`${norm(firstName.trim())}.${norm(parts[0])}`;
     setEmpSaving(true);setNewUErr('');
-    const rec={full_name,short_name,email:email.trim(),role,active:true,password:'avatel2026',username};
+    const tempPwd=genTempPassword(); // contraseña aleatoria segura — nunca hardcodeada
+    const rec={full_name,short_name,email:email.trim(),role,active:true,username};
     if(role==='operator'&&joinDate)rec.join_date=joinDate;
     const {data:inserted,error}=await sb.from('employees').insert(rec).select('id').single();
     if(error){setNewUErr(error.message);setEmpSaving(false);return;}
     // Crear usuario en Supabase Auth via Edge Function
+    let authOk=false;
     try{
       const session=(await sb.auth.getSession()).data.session;
       const authResp=await fetch(`${EF_URL}/manage-auth-user`,{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
-        body:JSON.stringify({action:'create',email:email.trim(),password:'avatel2026',full_name,role})
+        body:JSON.stringify({action:'create',email:email.trim(),password:tempPwd,full_name,role})
       });
       const authData=await authResp.json();
       if(authData.auth_id){
         await sb.from('employees').update({auth_id:authData.auth_id}).eq('id',inserted.id);
+        authOk=true;
       }
-    }catch(efErr){console.warn('Edge Function error al crear auth user:',efErr);}
+    }catch(efErr){setNewUErr('Empleado creado en BD pero error al crear acceso Auth. Comunica al administrador.');}
     // Auto-crear saldo de vacaciones para operadores nuevos
     if(role==='operator'&&inserted?.id){
       await sb.from('vacation_balance').insert({employee_id:inserted.id,year:2026});
@@ -1750,6 +1774,7 @@ function AdminView(){
     const {data}=await sb.from('employees').select('*').order('full_name');
     setEmpList(data||[]);
     setEmpSaving(false);setShowNE(false);resetNewUser();
+    if(authOk)setCreatedTempPwd({name:full_name,email:email.trim(),pwd:tempPwd});
   };
 
   const loadAdminReqs=()=>{
@@ -2052,33 +2077,80 @@ function AdminView(){
                 </select>
               </div>
             </div>
+            {/* Sección reset contraseña */}
             <div className="fg">
-              <label className="fl">Nueva contraseña <span style={{color:'var(--text3)'}}>(dejar vacío para no cambiar)</span></label>
-              <input className="fi" type="password" placeholder="Nueva contraseña..." value={editingEmp.newPassword||''} onChange={e=>setEditingEmp(p=>({...p,newPassword:e.target.value}))}/>
+              <label className="fl">Nueva contraseña <span style={{color:'var(--text3)'}}>(min. 8 caracteres — dejar vacío para no cambiar)</span></label>
+              <input className="fi" type="password" placeholder="Nueva contraseña..." value={editingEmp.newPassword||''} onChange={e=>{setEditingEmp(p=>({...p,newPassword:e.target.value}));setPwdResetMsg('');}}/>
             </div>
+            {(editingEmp.newPassword||'').length>0&&(
+              <div className="fg">
+                <label className="fl">Confirmar nueva contraseña</label>
+                <input className="fi" type="password" placeholder="Repite la contraseña..." value={confirmPwd} onChange={e=>{setConfirmPwd(e.target.value);setPwdResetMsg('');}}/>
+              </div>
+            )}
+            {pwdResetMsg&&<div className={`alert ${pwdResetMsg.startsWith('✓')?'alert-success':'alert-danger'}`} style={{margin:'4px 0'}}><span>{pwdResetMsg}</span></div>}
             <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
-              <button className="btn btn-ghost" onClick={()=>setEditingEmp(null)}>Cancelar</button>
+              <button className="btn btn-ghost" onClick={()=>{setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');}}>Cancelar</button>
               <button className="btn btn-primary" disabled={empSaving} onClick={async()=>{
-                setEmpSaving(true);
+                // Confirmar desactivación de empleado
+                if(!editingEmp.active&&!window.confirm(`¿Seguro que quieres DESACTIVAR a ${editingEmp.full_name}?\nPerderá acceso inmediatamente.`))return;
+                // Validar contraseña si se quiere cambiar
+                const newPwd=editingEmp.newPassword||'';
+                if(newPwd){
+                  if(newPwd.length<8){setPwdResetMsg('La contraseña debe tener al menos 8 caracteres');return;}
+                  if(newPwd!==confirmPwd){setPwdResetMsg('Las contraseñas no coinciden');return;}
+                }
+                setEmpSaving(true);setPwdResetMsg('');
                 const upd={full_name:editingEmp.full_name,short_name:editingEmp.short_name,email:editingEmp.email||null,username:editingEmp.username,role:editingEmp.role,active:editingEmp.active};
                 const {error}=await sb.from('employees').update(upd).eq('id',editingEmp.id);
                 if(error){alert('Error al guardar: '+error.message);}
                 else{
                   // Resetear contraseña en Auth si se proporcionó una nueva
-                  if(editingEmp.newPassword&&editingEmp.newPassword.length>=6&&editingEmp.auth_id){
+                  if(newPwd&&editingEmp.auth_id){
                     try{
                       const session=(await sb.auth.getSession()).data.session;
-                      await fetch(`${EF_URL}/manage-auth-user`,{
+                      const r=await fetch(`${EF_URL}/manage-auth-user`,{
                         method:'POST',
                         headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
-                        body:JSON.stringify({action:'update_password',auth_id:editingEmp.auth_id,password:editingEmp.newPassword})
+                        body:JSON.stringify({action:'update_password',auth_id:editingEmp.auth_id,password:newPwd})
                       });
-                    }catch(efErr){console.warn('Edge Function error al resetear contraseña:',efErr);}
+                      const rd=await r.json();
+                      if(rd.error){setPwdResetMsg('Datos guardados. Error al cambiar contraseña: '+rd.error);}
+                      else{setPwdResetMsg('✓ Contraseña actualizada correctamente');}
+                    }catch(efErr){setPwdResetMsg('Datos guardados pero error al cambiar contraseña en Auth.');}
+                    setEmpSaving(false);
+                    fetchEmployees().then(d=>{setEmpList(d||[]);});
+                    setConfirmPwd('');
+                    return; // mantener modal abierto para mostrar feedback
                   }
-                  fetchEmployees().then(data=>{setEmpList(data||[]);});setEditingEmp(null);
+                  fetchEmployees().then(d=>{setEmpList(d||[]);});setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');
                 }
                 setEmpSaving(false);
               }}>{empSaving?'Guardando…':'Guardar cambios'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: contraseña temporal generada tras alta */}
+      {createdTempPwd&&(
+        <div className="modal-overlay" onClick={()=>setCreatedTempPwd(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">✓ Usuario creado</div>
+            <div className="modal-sub">{createdTempPwd.name} · {createdTempPwd.email}</div>
+            <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px 16px',margin:'16px 0'}}>
+              <div style={{fontSize:11,color:'var(--text3)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.05em'}}>Contraseña temporal generada</div>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <code style={{fontSize:18,fontWeight:700,color:'var(--amber)',letterSpacing:'2px',fontFamily:'var(--mono)',flexGrow:1}}>{createdTempPwd.pwd}</code>
+                <button className="btn btn-ghost btn-sm" onClick={()=>{try{navigator.clipboard.writeText(createdTempPwd.pwd);}catch(e){}}} title="Copiar">📋</button>
+              </div>
+            </div>
+            <div style={{fontSize:12,color:'var(--text3)',lineHeight:1.6}}>
+              ⚠ Comunica esta contraseña al empleado de forma segura.<br/>
+              El empleado deberá cambiarla en su primer acceso desde <strong>Mi Perfil</strong>.
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',marginTop:16}}>
+              <button className="btn btn-primary" onClick={()=>setCreatedTempPwd(null)}>Entendido</button>
             </div>
           </div>
         </div>
@@ -2088,7 +2160,7 @@ function AdminView(){
         <div className="modal-overlay" onClick={()=>{setShowNE(false);resetNewUser();}}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
             <div className="modal-title">Alta de nuevo usuario</div>
-            <div className="modal-sub">Contraseña inicial: <code style={{background:'var(--bg3)',padding:'1px 5px',borderRadius:3,fontSize:11}}>avatel2026</code></div>
+            <div className="modal-sub">Se generará una contraseña temporal segura al guardar.</div>
 
             <div className="fg" style={{marginBottom:14}}>
               <label className="fl">Rol</label>
@@ -2132,7 +2204,7 @@ function LoginView({onLogin}){
   const [countdown,setCountdown]=useState(0);
   const FAIL_KEY='noc_login_fails';
   const MAX_FAILS=5;
-  const LOCKOUT_S=30;
+  const LOCKOUT_S=300; // 5 minutos de bloqueo tras MAX_FAILS intentos fallidos
 
   // Restaurar bloqueo si existe al montar
   useEffect(()=>{
@@ -2197,9 +2269,8 @@ function LoginView({onLogin}){
       return;
     }
 
-    // Limpiar intentos fallidos
+    // Limpiar intentos fallidos — sesión gestionada por Supabase Auth, no localStorage
     try{localStorage.removeItem(FAIL_KEY);}catch(ex){}
-    try{localStorage.setItem('noc_user',JSON.stringify({id:user.id,full_name:user.full_name,short_name:user.short_name,role:user.role,username:user.username,email:user.email||null,photo_url:user.photo_url||null}));}catch(ex){}
     await logAudit('login',{username:user.username,role:user.role},user.id);
     onLogin(user);
   };
@@ -2531,11 +2602,11 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
     if(dow===0||dow===6)return'No puedes elegir fin de semana';
     if(dow===1)return'No puede ser lunes';
     if(dow===5)return'No puede ser viernes';
-    if(FEST.includes(dateStr))return'No puedes elegir un festivo';
+    if(festDates.has(dateStr))return'No puedes elegir un festivo';
     const prev=new Date(d);prev.setDate(prev.getDate()-1);
     const next=new Date(d);next.setDate(next.getDate()+1);
-    if(FEST.includes(prev.toISOString().split('T')[0]))return'No puede ser el día después de un festivo';
-    if(FEST.includes(next.toISOString().split('T')[0]))return'No puede ser el día antes de un festivo';
+    if(festDates.has(prev.toISOString().split('T')[0]))return'No puede ser el día después de un festivo';
+    if(festDates.has(next.toISOString().split('T')[0]))return'No puede ser el día antes de un festivo';
     return null;
   };
 
@@ -2852,7 +2923,7 @@ function weekHasFestivo(week){
     const d=new Date(week.start);d.setDate(d.getDate()+i);
     if(d.getFullYear()!==2026)continue;
     const s=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    if(FEST.includes(s))return true;
+    if(festDates.has(s))return true;
   }
   return false;
 }
@@ -3300,16 +3371,14 @@ function App(){
           .eq('auth_id',session.user.id).eq('active',true).maybeSingle();
         if(emp){
           setCurrentUser(emp);
-          try{localStorage.setItem('noc_user',JSON.stringify({id:emp.id,full_name:emp.full_name,short_name:emp.short_name,role:emp.role,username:emp.username,email:emp.email||null,photo_url:emp.photo_url||null}));}catch(ex){}
         }else{
           await sb.auth.signOut();
-          try{localStorage.removeItem('noc_user');}catch(ex){}
         }
-      }else{
-        try{localStorage.removeItem('noc_user');}catch(ex){}
       }
       setAuthChecked(true);
     });
+    // Cargar festivos desde BD al arrancar — actualiza festDates module-level
+    fetchFestivos();
   },[]);
 
   const isAdmin=currentUser&&(currentUser.role==='admin'||currentUser.role==='manager'||currentUser.role==='coordinator');
@@ -3336,8 +3405,7 @@ function App(){
   };
 
   const handleUserUpdate=(updated)=>{
-    setCurrentUser(updated);
-    try{localStorage.setItem('noc_user',JSON.stringify(updated));}catch(e){}
+    setCurrentUser(updated); // sesión en memoria — Supabase Auth gestiona la persistencia
   };
 
   // ── Routing pages ──────────────────────────────────────────────────────────
@@ -3420,7 +3488,7 @@ function App(){
               ⏻
             </button>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v4.1 — Visual refresh + CalN2 agrupado por mes</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>v3.5 — Producción: seguridad contraseñas, RLS hardening, festivos BD</div>
         </div>
       </div>
 
