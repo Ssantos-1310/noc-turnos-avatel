@@ -67,7 +67,6 @@ input,select,textarea{font-family:var(--font);font-size:14px}
 .badge-V{background:#1a3d2a;color:#4fc97a}
 .badge-B{background:#3d1a1a;color:#f75f5f}
 .badge-D{background:var(--orange3);color:var(--orange)}
-.badge-DN{background:rgba(239,68,68,.15);color:#f87171}
 .badge-O{background:#2d2a1a;color:#fbbf24}
 .badge-P{background:#1a2e2e;color:#2dd4bf}
 .badge-empty{background:transparent;color:var(--text3)}
@@ -252,7 +251,6 @@ body.light-theme .badge-N{background:#ede9fe;color:#6d28d9}
 body.light-theme .badge-V{background:#dcfce7;color:#16a34a}
 body.light-theme .badge-B{background:#fee2e2;color:#dc2626}
 body.light-theme .badge-D{background:#ffedd5;color:#ea580c}
-body.light-theme .badge-DN{background:#fee2e2;color:#dc2626}
 body.light-theme .badge-O{background:#fef9c3;color:#92400e}
 body.light-theme .badge-P{background:#ccfbf1;color:#0d9488}
 body.light-theme .pill-purple{background:#ede9fe;color:#6d28d9}
@@ -324,11 +322,12 @@ async function fetchShiftsForMonth(monthIdx) {
   const end = `${key}-${String(MD[monthIdx]).padStart(2,'0')}`;
   const { data, error } = await sb
     .from('shifts')
-    .select('shift_date, shift_type, employee:employee_id(short_name)')
+    .select('shift_date, shift_type, notes, employee:employee_id(short_name)')
     .gte('shift_date', start)
     .lte('shift_date', end);
   if (error) { console.error('fetchShifts error', error); return {}; }
   // Convert to {shortName: [s1,s2,...,s31]}
+  // D shifts with time range stored in notes as "HH:MM-HH:MM" → "D|HH:MM-HH:MM"
   const result = {};
   if (data) {
     data.forEach(row => {
@@ -336,14 +335,14 @@ async function fetchShiftsForMonth(monthIdx) {
       if (!sn) return;
       const day = new Date(row.shift_date + 'T00:00:00').getDate() - 1;
       if (!result[sn]) result[sn] = Array(31).fill('');
-      result[sn][day] = row.shift_type;
+      result[sn][day] = (row.shift_type === 'D' && row.notes) ? `D|${row.notes}` : row.shift_type;
     });
   }
   shiftsCache[key] = result;
   return result;
 }
 
-async function saveShift(employeeShortName, date, shiftType) {
+async function saveShift(employeeShortName, date, shiftType, notes=null) {
   // Get employee id - try short_name first, then full_name
   let { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).maybeSingle();
   if (!emp) {
@@ -351,10 +350,8 @@ async function saveShift(employeeShortName, date, shiftType) {
     emp = emp2;
   }
   if (!emp) { console.error('saveShift: empleado no encontrado:', employeeShortName); return { error: 'Empleado no encontrado' }; }
-  const { error } = await sb.from('shifts').upsert(
-    { employee_id: emp.id, shift_date: date, shift_type: shiftType },
-    { onConflict: 'employee_id,shift_date' }
-  );
+  const upsertData = { employee_id: emp.id, shift_date: date, shift_type: shiftType, notes: notes||null };
+  const { error } = await sb.from('shifts').upsert(upsertData, { onConflict: 'employee_id,shift_date' });
   // Invalidate cache
   const mk = date.substring(0,7);
   delete shiftsCache[mk];
@@ -656,7 +653,7 @@ const MONTHS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto",
 const MN=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MD=[31,28,31,30,31,30,31,31,30,31,30,31];
 const DN=["D","L","M","X","J","V","S"];
-const SL={M:'Mañana',T:'Tarde',N:'Noche',V:'Vacaciones',B:'Baja',D:'Horas extras',DN:'D Fest./Noche',O:'Oficina',P:'Asuntos propios'};
+const SL={M:'Mañana',T:'Tarde',N:'Noche',V:'Vacaciones',B:'Baja',D:'Horas extras',O:'Oficina',P:'Asuntos propios'};
 const HMAX=1624,JMAX=203,VMAX=23;
 const MWK={M:4,T:4,N:2},MWE={M:2,T:2,N:2};
 const REQS=[
@@ -681,8 +678,9 @@ const isWE=(mi,d)=>[0,6].includes(new Date(2026,mi,d).getDay());
 const isTod=(mi,d)=>new Date(2026,mi,d).toDateString()===new Date().toDateString();
 
 function Bdg({s}){
-  if(!s)return<span className="badge badge-empty">–</span>;
-  return<span className={`badge badge-${s}`}>{s}</span>;
+  const base=s?s.split('|')[0]:'';
+  if(!base)return<span className="badge badge-empty">–</span>;
+  return<span className={`badge badge-${base}`} title={s&&s.includes('|')?s.split('|')[1]:''}>{base}</span>;
 }
 function NI({n}){
   const ic={
@@ -776,6 +774,8 @@ function CalendarView({isAdmin=true}){
   const [sel,setSel]=useState(null); // {emp, days: Set}
   const [batchModal,setBatchModal]=useState(false);
   const [batchShift,setBatchShift]=useState('M');
+  const [dStart,setDStart]=useState('07:00');
+  const [dEnd,setDEnd]=useState('22:00');
   const [covMins,setCovMins]=useState({wk:MWK,we:MWE});
   const [emps,setEmps]=useState(EMPS);
   const [empShortMap,setEmpShortMap]=useState(EMP_SHORT);
@@ -842,9 +842,10 @@ function CalendarView({isAdmin=true}){
     if(!sel)return;
     setBatchSaving(true);setBatchErr(null);
     const empKey=empShortMap[sel.emp]||EMP_SHORT[sel.emp]||sel.emp;
+    const dNotes=batchShift==='D'?`${dStart}-${dEnd}`:null;
     const results=await Promise.all([...sel.days].map(dayIdx=>{
       const date=`2026-${String(mi+1).padStart(2,'0')}-${String(dayIdx+1).padStart(2,'0')}`;
-      return saveShift(empKey, date, batchShift);
+      return saveShift(empKey, date, batchShift, dNotes);
     }));
     const errors=results.filter(r=>r?.error);
     if(errors.length>0){
@@ -1014,37 +1015,43 @@ function CalendarView({isAdmin=true}){
                 Días: {[...sel.days].sort((a,b)=>a-b).map(d=>d+1).join(', ')}
               </div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:(batchShift==='D'||batchShift==='DN')?8:20}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:batchShift==='D'?8:20}}>
               {['M','T','N','V','B','D','O',''].map(s=>(
-                <button key={s||'x'} onClick={()=>setBatchShift(s==='D'&&(batchShift!=='D'&&batchShift!=='DN')?'D':s||'')}
+                <button key={s||'x'} onClick={()=>setBatchShift(s||'')}
                   style={{padding:'10px 4px',borderRadius:6,border:'2px solid',cursor:'pointer',
-                    borderColor:(batchShift===s||(s==='D'&&batchShift==='DN'))?'var(--blue)':'var(--border)',
-                    background:(batchShift===s||(s==='D'&&batchShift==='DN'))?'var(--blue3)':'var(--bg3)',
+                    borderColor:batchShift===s||(s===''&&batchShift==='')?'var(--blue)':'var(--border)',
+                    background:batchShift===s||(s===''&&batchShift==='')?'var(--blue3)':'var(--bg3)',
                     display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
                   <Bdg s={s}/><span style={{fontSize:10,color:'var(--text2)'}}>{s?SL[s]:'Libre'}</span>
                 </button>
               ))}
             </div>
-            {(batchShift==='D'||batchShift==='DN')&&(
-              <div style={{marginBottom:20,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'10px 12px'}}>
-                <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Rango horario del turno D</div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                  <button onClick={()=>setBatchShift('D')}
-                    style={{padding:'8px 6px',borderRadius:6,border:'2px solid',cursor:'pointer',
-                      borderColor:batchShift==='D'?'var(--orange)':'var(--border)',
-                      background:batchShift==='D'?'var(--orange3)':'var(--bg4)',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                    <span style={{fontSize:12,fontWeight:700,color:'var(--orange)'}}>07:00 – 22:00</span>
-                    <span style={{fontSize:10,color:'var(--text3)'}}>Horas Extra</span>
-                  </button>
-                  <button onClick={()=>setBatchShift('DN')}
-                    style={{padding:'8px 6px',borderRadius:6,border:'2px solid',cursor:'pointer',
-                      borderColor:batchShift==='DN'?'#f87171':'var(--border)',
-                      background:batchShift==='DN'?'rgba(239,68,68,.1)':'var(--bg4)',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                    <span style={{fontSize:12,fontWeight:700,color:'#f87171'}}>22:00 – 07:00</span>
-                    <span style={{fontSize:10,color:'var(--text3)'}}>Horas Festivos</span>
-                  </button>
+            {batchShift==='D'&&(
+              <div style={{marginBottom:20,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'12px 14px'}}>
+                <div style={{fontSize:11,color:'var(--text3)',marginBottom:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>
+                  Rango horario · Turno D
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{flex:1}}>
+                    <label style={{fontSize:10,color:'var(--text3)',display:'block',marginBottom:4}}>Hora inicio</label>
+                    <input type="time" className="fi" value={dStart} onChange={e=>setDStart(e.target.value)}
+                      style={{padding:'6px 8px',fontSize:13,fontFamily:'var(--mono)',textAlign:'center'}}/>
+                  </div>
+                  <div style={{color:'var(--text3)',marginTop:14,fontSize:14}}>→</div>
+                  <div style={{flex:1}}>
+                    <label style={{fontSize:10,color:'var(--text3)',display:'block',marginBottom:4}}>Hora fin</label>
+                    <input type="time" className="fi" value={dEnd} onChange={e=>setDEnd(e.target.value)}
+                      style={{padding:'6px 8px',fontSize:13,fontFamily:'var(--mono)',textAlign:'center'}}/>
+                  </div>
+                </div>
+                <div style={{marginTop:8,fontSize:10,color:'var(--text3)'}}>
+                  {(()=>{
+                    const sh=parseInt(dStart);const eh=parseInt(dEnd);
+                    const isNight=sh>=22||sh<7||eh<=7;
+                    return isNight
+                      ?<span style={{color:'#f87171'}}>⚡ 22:00–07:00 → contará como <strong>Horas Festivos</strong> en RRHH</span>
+                      :<span style={{color:'var(--orange)'}}>☀ 07:00–22:00 → contará como <strong>Horas Extra</strong> en RRHH</span>;
+                  })()}
                 </div>
               </div>
             )}
@@ -1142,12 +1149,13 @@ function TeamView(){
   // Turno actual del día de hoy
   function getTurno(emp){
     const empKey=empShortMap[emp]||EMP_SHORT[emp]||emp;
-    const s=(md[empKey]||[])[d-1]||'';
+    const raw=(md[empKey]||[])[d-1]||'';
+    const s=raw.split('|')[0];
+    const hrs=raw.includes('|')?raw.split('|')[1]:'';
     if(s==='M')return{label:'Mañana',cls:'pill-blue',av:'#7eb8f7'};
     if(s==='T')return{label:'Tarde',cls:'pill-amber',av:'#f7b84f'};
     if(s==='N')return{label:'Noche',cls:'pill-purple',av:'#c084fc'};
-    if(s==='D')return{label:'H. extras',cls:'pill-warn',av:'#f7b84f'};
-    if(s==='DN')return{label:'D Noche',cls:'pill-bad',av:'#f87171'};
+    if(s==='D')return{label:hrs?`H.ext ${hrs}`:'H. extras',cls:'pill-warn',av:'#f7b84f'};
     if(s==='O')return{label:'Onboarding',cls:'pill-neutral',av:'var(--text3)'};
     return{label:'Libre',cls:'pill-ok',av:'var(--green)'};
   }
@@ -2262,7 +2270,7 @@ function OperatorDashboard({user}){
       if(s.shift_type==='M')m++;
       else if(s.shift_type==='T')t++;
       else if(s.shift_type==='N')n++;
-      else if(s.shift_type==='D'||s.shift_type==='DN')d++;
+      else if(s.shift_type==='D')d++;
       else if(s.shift_type==='P')a++;
     });
     return{m,t,n,d,a,jornadas:m+t+n+a,horas:(m+t+n+a)*8};
@@ -2426,13 +2434,15 @@ function OperatorDashboard({user}){
               <tr>
                 <td style={{padding:'4px 12px',fontSize:11,color:'var(--text3)'}}>Turno</td>
                 {di.map((info,i)=>{
-                  const s=userShifts[i]||'';
+                  const raw=userShifts[i]||'';
+                  const sb2=raw.split('|')[0];
+                  const sTitle=raw.includes('|')?raw.split('|')[1]:'';
                   return(
                     <td key={i} style={{
                       padding:'4px 2px',textAlign:'center',
                       background:info.fe?'rgba(247,184,79,.05)':info.we?'rgba(79,142,247,.04)':'transparent'
                     }}>
-                      {s?<span className={`badge badge-${s}`}>{s}</span>:<span style={{fontSize:9,color:'var(--text3)',opacity:.25}}>·</span>}
+                      {sb2?<span className={`badge badge-${sb2}`} title={sTitle}>{sb2}</span>:<span style={{fontSize:9,color:'var(--text3)',opacity:.25}}>·</span>}
                     </td>
                   );
                 })}
@@ -3072,13 +3082,19 @@ function ResumenRRHH(){
         const esFestivo=isFest(selMonth,i+1);      // solo los 14 días hardcodeados, sin domingos
         const esDomingo=d.getDay()===0;
         const dayStr=(i+1)+'/'+mesNum;
-        if(shift==='D'){
-          if(esFestivo||esDomingo){horasFestivos+=8;dFestDates.push(dayStr);}
+        const [baseShift,shiftNotes]=shift.split('|');
+        if(baseShift==='D'){
+          // Parsear rango horario si existe en notas
+          const esNocturno=(()=>{
+            if(!shiftNotes)return false;
+            const sh=parseInt(shiftNotes.split('-')[0]||'7');
+            return sh>=22||sh<7;
+          })();
+          if(esFestivo||esDomingo||esNocturno){horasFestivos+=8;dFestDates.push(dayStr);}
           else{horasExtra+=8;dExtraDates.push(dayStr);}
         }
-        if(shift==='DN'){horasFestivos+=8;dFestDates.push(dayStr);}  // D nocturno → siempre Horas Festivos
-        if(shift==='N'){plusNoc++;nDates.push(dayStr);}
-        if((shift==='M'||shift==='T')&&esFestivo){compFest++;mtFestDates.push(dayStr);}
+        if(baseShift==='N'){plusNoc++;nDates.push(dayStr);}
+        if((baseShift==='M'||baseShift==='T')&&esFestivo){compFest++;mtFestDates.push(dayStr);}
       }
       // N2 guardias for this person this month
       const myWeeks=WEEKS_2026.filter(w=>{
