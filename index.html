@@ -2172,14 +2172,25 @@ function AdminView(){
                 </select>
               </div>
             </div>
-            {/* Sección reset contraseña */}
+            {/* Aviso: empleado sin cuenta de acceso */}
+            {!editingEmp.auth_id&&(
+              <div className="alert alert-warn" style={{margin:'4px 0 8px'}}>
+                <span>⚠ Este empleado no tiene cuenta de acceso. Asígnale una contraseña para activar su acceso.</span>
+              </div>
+            )}
+            {/* Sección contraseña */}
             <div className="fg">
-              <label className="fl">Nueva contraseña <span style={{color:'var(--text3)'}}>(min. 8 caracteres — dejar vacío para no cambiar)</span></label>
+              <label className="fl">
+                {editingEmp.auth_id
+                  ?<>Nueva contraseña <span style={{color:'var(--text3)'}}>(min. 8 caracteres — dejar vacío para no cambiar)</span></>
+                  :<span style={{color:'var(--amber)',fontWeight:600}}>Contraseña de acceso <span style={{fontWeight:400,color:'var(--text3)'}}>(obligatoria — min. 8 caracteres)</span></span>
+                }
+              </label>
               <input className="fi" type="password" placeholder="Nueva contraseña..." value={editingEmp.newPassword||''} onChange={e=>{setEditingEmp(p=>({...p,newPassword:e.target.value}));setPwdResetMsg('');}}/>
             </div>
             {(editingEmp.newPassword||'').length>0&&(
               <div className="fg">
-                <label className="fl">Confirmar nueva contraseña</label>
+                <label className="fl">Confirmar contraseña</label>
                 <input className="fi" type="password" placeholder="Repite la contraseña..." value={confirmPwd} onChange={e=>{setConfirmPwd(e.target.value);setPwdResetMsg('');}}/>
               </div>
             )}
@@ -2187,9 +2198,9 @@ function AdminView(){
             <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
               <button className="btn btn-ghost" onClick={()=>{setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');}}>Cancelar</button>
               <button className="btn btn-primary" disabled={empSaving} onClick={async()=>{
-                // Confirmar desactivación de empleado
+                // Confirmar desactivación
                 if(!editingEmp.active&&!window.confirm(`¿Seguro que quieres DESACTIVAR a ${editingEmp.full_name}?\nPerderá acceso inmediatamente.`))return;
-                // Validar contraseña si se quiere cambiar
+                // Validar contraseña
                 const newPwd=editingEmp.newPassword||'';
                 if(newPwd){
                   if(newPwd.length<8){setPwdResetMsg('La contraseña debe tener al menos 8 caracteres');return;}
@@ -2198,28 +2209,37 @@ function AdminView(){
                 setEmpSaving(true);setPwdResetMsg('');
                 const upd={full_name:editingEmp.full_name,short_name:editingEmp.short_name,email:editingEmp.email||null,username:editingEmp.username,role:editingEmp.role,active:editingEmp.active};
                 const {error}=await sb.from('employees').update(upd).eq('id',editingEmp.id);
-                if(error){alert('Error al guardar: '+error.message);}
-                else{
-                  // Resetear contraseña en Auth si se proporcionó una nueva
-                  if(newPwd&&editingEmp.auth_id){
-                    try{
-                      const session=(await sb.auth.getSession()).data.session;
-                      const r=await fetch(`${EF_URL}/manage-auth-user`,{
-                        method:'POST',
-                        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
-                        body:JSON.stringify({action:'update_password',auth_id:editingEmp.auth_id,password:newPwd})
-                      });
-                      const rd=await r.json();
-                      if(rd.error){setPwdResetMsg('Datos guardados. Error al cambiar contraseña: '+rd.error);}
-                      else{setPwdResetMsg('✓ Contraseña actualizada correctamente');}
-                    }catch(efErr){setPwdResetMsg('Datos guardados pero error al cambiar contraseña en Auth.');}
-                    setEmpSaving(false);
-                    fetchEmployees().then(d=>{setEmpList(d||[]);});
-                    setConfirmPwd('');
-                    return; // mantener modal abierto para mostrar feedback
-                  }
-                  fetchEmployees().then(d=>{setEmpList(d||[]);});setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');
+                if(error){alert('Error al guardar: '+error.message);setEmpSaving(false);return;}
+                if(newPwd){
+                  try{
+                    const session=(await sb.auth.getSession()).data.session;
+                    const efAction=editingEmp.auth_id?'update_password':'create';
+                    const efBody=editingEmp.auth_id
+                      ?{action:'update_password',auth_id:editingEmp.auth_id,password:newPwd}
+                      :{action:'create',email:editingEmp.email,password:newPwd,full_name:editingEmp.full_name,role:editingEmp.role};
+                    const r=await fetch(`${EF_URL}/manage-auth-user`,{
+                      method:'POST',
+                      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
+                      body:JSON.stringify(efBody)
+                    });
+                    const rd=await r.json();
+                    if(rd.error){
+                      setPwdResetMsg('Datos guardados. Error en acceso: '+rd.error);
+                    }else{
+                      // Si se creó cuenta nueva, guardar auth_id
+                      if(rd.auth_id){
+                        await sb.from('employees').update({auth_id:rd.auth_id}).eq('id',editingEmp.id);
+                        setEditingEmp(p=>({...p,auth_id:rd.auth_id}));
+                      }
+                      setPwdResetMsg('✓ '+(editingEmp.auth_id?'Contraseña actualizada':'Cuenta de acceso creada y contraseña asignada'));
+                    }
+                  }catch(efErr){setPwdResetMsg('Datos guardados pero error al contactar servicio de Auth.');}
+                  setEmpSaving(false);
+                  fetchEmployees().then(d=>{setEmpList(d||[]);});
+                  setConfirmPwd('');
+                  return; // mantener modal abierto para mostrar feedback
                 }
+                fetchEmployees().then(d=>{setEmpList(d||[]);});setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');
                 setEmpSaving(false);
               }}>{empSaving?'Guardando…':'Guardar cambios'}</button>
             </div>
