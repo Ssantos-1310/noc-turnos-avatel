@@ -1728,6 +1728,10 @@ function AdminView(){
   const [createdTempPwd,setCreatedTempPwd]=useState(null); // contraseña temporal generada tras alta
   const [confirmPwd,setConfirmPwd]=useState('');           // confirmación al resetear contraseña
   const [pwdResetMsg,setPwdResetMsg]=useState('');         // feedback reset contraseña
+  const [deletingEmp,setDeletingEmp]=useState(null);       // empleado pendiente de eliminación permanente
+  const [deleteConfirmText,setDeleteConfirmText]=useState(''); // texto de confirmación escrito por admin
+  const [deleteLoading,setDeleteLoading]=useState(false);
+  const [deleteErr,setDeleteErr]=useState('');
   const diagResultsRef=React.useRef(null);
   const [diagResults,setDiagResults]=useState(null);
   const [diagLoading,setDiagLoading]=useState(false);
@@ -1939,7 +1943,10 @@ function AdminView(){
                         <td style={{fontWeight:500}}>{e.full_name}</td>
                         <td><span style={{fontSize:11,color:'var(--text3)',textTransform:'capitalize'}}>{e.role}</span></td>
                         <td><span className={`pill ${e.active?'pill-ok':'pill-bad'}`}>{e.active?'Activo':'Inactivo'}</span></td>
-                        <td><button className="btn btn-ghost btn-sm" onClick={()=>setEditingEmp({...e,newPassword:''})}>Editar</button></td>
+                        <td style={{display:'flex',gap:6,alignItems:'center'}}>
+                          <button className="btn btn-ghost btn-sm" onClick={()=>setEditingEmp({...e,newPassword:''})}>Editar</button>
+                          <button className="btn btn-ghost btn-sm" style={{color:'var(--red)',borderColor:'rgba(247,95,95,.3)'}} onClick={()=>{setDeletingEmp(e);setDeleteConfirmText('');setDeleteErr('');}}>Eliminar</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2048,6 +2055,91 @@ function AdminView(){
           <div style={{fontSize:12,color:'var(--text3)'}}>Pulsa "Ejecutar test" para verificar la conexión con Supabase.</div>
         )}
       </div>
+
+      {/* Modal: Eliminación permanente de empleado */}
+      {deletingEmp&&(
+        <div className="modal-overlay" onClick={()=>!deleteLoading&&setDeletingEmp(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
+            {/* Cabecera de peligro */}
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
+              <span style={{fontSize:22}}>🗑️</span>
+              <div className="modal-title" style={{color:'var(--red)',margin:0}}>Eliminar empleado permanentemente</div>
+            </div>
+            <div className="modal-sub">{deletingEmp.full_name} · {deletingEmp.email||deletingEmp.username}</div>
+
+            {/* Aviso legal y de datos */}
+            <div style={{background:'rgba(247,95,95,.08)',border:'1px solid rgba(247,95,95,.3)',borderRadius:'var(--radius)',padding:'12px 14px',margin:'14px 0',fontSize:12,lineHeight:1.7}}>
+              <div style={{fontWeight:600,color:'var(--red)',marginBottom:6}}>⚠ Esta acción es IRREVERSIBLE</div>
+              <div style={{color:'var(--text2)'}}>
+                Se eliminarán definitivamente:<br/>
+                <span style={{color:'var(--text3)'}}>— Todos sus turnos e historial de calendario<br/>
+                — Registros RRHH (horas extra, plus NOC, festivos)<br/>
+                — Saldo y registro de vacaciones<br/>
+                — Guardias N2 asignadas<br/>
+                — Su cuenta de acceso a la aplicación</span>
+              </div>
+            </div>
+
+            {/* Recomendación */}
+            <div style={{background:'rgba(79,201,122,.08)',border:'1px solid rgba(79,201,122,.25)',borderRadius:'var(--radius)',padding:'10px 14px',marginBottom:14,fontSize:12,lineHeight:1.6}}>
+              <span style={{color:'var(--green)',fontWeight:600}}>✓ Alternativa recomendada: </span>
+              <span style={{color:'var(--text2)'}}>Si el empleado solo causa baja en la empresa, usa <strong>Editar → Estado: Inactivo</strong>. Su historial queda conservado y la Ley obliga a mantener registros laborales durante <strong>4 años</strong> (Art. 21 LRJS).</span>
+            </div>
+
+            {/* Confirmación por nombre */}
+            <div className="fg">
+              <label className="fl" style={{color:'var(--red)'}}>
+                Escribe el nombre completo del empleado para confirmar:
+                <code style={{marginLeft:6,background:'var(--bg3)',padding:'1px 6px',borderRadius:3,fontSize:11,color:'var(--text1)'}}>{deletingEmp.full_name}</code>
+              </label>
+              <input
+                className="fi"
+                placeholder="Escribe el nombre exacto..."
+                value={deleteConfirmText}
+                onChange={e=>{setDeleteConfirmText(e.target.value);setDeleteErr('');}}
+                disabled={deleteLoading}
+                style={{borderColor:deleteConfirmText===deletingEmp.full_name?'var(--red)':'var(--border)'}}
+              />
+            </div>
+
+            {deleteErr&&<div className="alert alert-danger" style={{margin:'6px 0'}}><span>⚠ {deleteErr}</span></div>}
+
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:14}}>
+              <button className="btn btn-ghost" onClick={()=>setDeletingEmp(null)} disabled={deleteLoading}>Cancelar</button>
+              <button
+                className="btn btn-primary"
+                disabled={deleteLoading||deleteConfirmText!==deletingEmp.full_name}
+                style={{background:'var(--red)',borderColor:'var(--red)',opacity:deleteConfirmText===deletingEmp.full_name?1:.45}}
+                onClick={async()=>{
+                  if(deleteConfirmText!==deletingEmp.full_name)return;
+                  setDeleteLoading(true);setDeleteErr('');
+                  // 1. Eliminar de BD via función RPC segura
+                  const{data,error}=await sb.rpc('delete_employee_permanent',{p_id:deletingEmp.id});
+                  if(error||data?.error){
+                    setDeleteErr(data?.error||error?.message||'Error al eliminar');
+                    setDeleteLoading(false);return;
+                  }
+                  // 2. Eliminar de Supabase Auth si tiene auth_id
+                  if(deletingEmp.auth_id){
+                    try{
+                      const session=(await sb.auth.getSession()).data.session;
+                      await fetch(`${EF_URL}/manage-auth-user`,{
+                        method:'POST',
+                        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
+                        body:JSON.stringify({action:'delete',auth_id:deletingEmp.auth_id})
+                      });
+                    }catch(e){/* Auth delete failed — employee already removed from BD */}
+                  }
+                  // 3. Refrescar lista
+                  const{data:fresh}=await sb.from('employees').select('*').order('full_name');
+                  setEmpList(fresh||[]);
+                  setDeleteLoading(false);setDeletingEmp(null);setDeleteConfirmText('');
+                }}
+              >{deleteLoading?'Eliminando…':'Eliminar definitivamente'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Editar Empleado */}
       {editingEmp&&(
