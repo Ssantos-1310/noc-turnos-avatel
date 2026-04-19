@@ -676,11 +676,34 @@ async function createShiftRequest(req) {
 
 async function fetchPendingRequests() {
   const { data } = await sb.from('shift_requests')
-    .select('id, request_type, status, created_at, requester_date, target_date, vacation_start, vacation_end, notes, requester:requester_id(id, full_name, short_name), target:target_id(id, full_name, short_name)')
+    .select('id, request_type, status, created_at, requester_date, requester_shift, target_date, target_shift, vacation_start, vacation_end, notes, swap_group_id, requester:requester_id(id, full_name, short_name), target:target_id(id, full_name, short_name)')
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   return data || [];
 }
+
+// Helper: obtiene los turnos de varios (empleado, fecha) en una sola query
+// Devuelve Map con clave `${empId}_${date}` → shift_type ('M','T','N','D','V','P',etc) o null si libre
+async function fetchShiftsFor(empIds, dates) {
+  const map = {};
+  if (!empIds?.length || !dates?.length) return map;
+  const uniqEmps = [...new Set(empIds.filter(Boolean))];
+  const uniqDates = [...new Set(dates.filter(Boolean))];
+  const { data } = await sb.from('shifts').select('employee_id,shift_date,shift_type')
+    .in('employee_id', uniqEmps).in('shift_date', uniqDates);
+  (data || []).forEach(s => { map[`${s.employee_id}_${s.shift_date}`] = s.shift_type; });
+  return map;
+}
+
+// Etiqueta humana del turno (M/T/N/D/V/P). D = Noche festivo. '—' si libre/sin asignar
+const SHIFT_LABEL_FULL = { M:'Mañana', T:'Tarde', N:'Noche', D:'Noche/Festivo', V:'Vacaciones', P:'Asuntos propios', L:'Libre' };
+const SHIFT_LABEL_SHORT = { M:'M', T:'T', N:'N', D:'D', V:'V', P:'P', L:'L' };
+// Colores de badge de turno — coherentes con .badge-* ya definidos en CSS
+const SHIFT_COLOR = { M:'#7eb8f7', T:'#f7b84f', N:'#c084fc', D:'#fb923c', DN:'#f87171', V:'#4fc97a', P:'#2dd4bf' };
+const isWorkShift = (s) => s === 'M' || s === 'T' || s === 'N' || s === 'D';
+
+// Genera UUID v4 — usado para agrupar solicitudes de cambio multi-día
+const genGroupId = () => (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).substring(2)));
 
 async function updateRequestStatus(id, status, approverId) {
   const { error } = await sb.from('shift_requests').update({ status, approved_by: approverId, updated_at: new Date().toISOString() }).eq('id', id);
@@ -1633,9 +1656,42 @@ function HistorialView(){
     fetchRequestHistory(100).then(({data})=>{setHist(data);setLoading(false);});
   },[open]);
 
+  // Revierte un único swap (un par requester_date ↔ target_date) a su estado previo
+  const revertSwap=async(req)=>{
+    const empId=req.requester_id;
+    if(!empId||!req.target_id||!req.requester_date||!req.target_date)return;
+    const {data:cur1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',req.target_date).maybeSingle();
+    const {data:cur2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',req.target_id).eq('shift_date',req.requester_date).maybeSingle();
+    if(cur1?.id)await sb.from('shifts').delete().eq('id',cur1.id);
+    if(cur2?.id)await sb.from('shifts').delete().eq('id',cur2.id);
+    if(cur2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:req.requester_date,shift_type:cur2.shift_type},{onConflict:'employee_id,shift_date'});
+    if(cur1?.shift_type)await sb.from('shifts').upsert({employee_id:req.target_id,shift_date:req.target_date,shift_type:cur1.shift_type},{onConflict:'employee_id,shift_date'});
+  };
+
   const cancelRequest=async(h)=>{
-    if(!confirm(`¿Cancelar la solicitud de ${h.requester_name}?\nSe revertirán los cambios aplicados.`))return;
+    // Si es un grupo de cambio multi-día, revierte TODOS los pares
+    const isGroup=h._isGroup;
+    const label=isGroup?`${h._count} cambios de turno de ${h.requester_name}`:`la solicitud de ${h.requester_name}`;
+    if(!confirm(`¿Cancelar ${label}?\nSe revertirán los cambios aplicados.`))return;
     setCancelling(h.id);
+
+    if(isGroup&&h._rows){
+      // Revertir cada par del grupo
+      for(const req of h._rows){await revertSwap(req);}
+      const months=new Set();
+      h._rows.forEach(r=>{months.add(r.requester_date?.substring(0,7));months.add(r.target_date?.substring(0,7));});
+      months.forEach(mk=>{if(mk)delete shiftsCache[mk];});
+      window.__calendarVersion=(window.__calendarVersion||0)+1;
+      // Marcar todas las filas como cancelled
+      for(const r of h._rows){
+        await sb.from('shift_requests').update({status:'cancelled',resolved_at:new Date().toISOString()}).eq('id',r.id);
+      }
+      setHist(prev=>prev.map(x=>x.id===h.id?{...x,status:'cancelled'}:x));
+      setCancelling(null);
+      return;
+    }
+
+    // Rutas antiguas (1 fila individual)
     const {data:req}=await sb.from('shift_requests').select('*').eq('id',h.id).single();
     if(!req){setCancelling(null);return;}
     const empId=req.requester_id;
@@ -1659,15 +1715,9 @@ function HistorialView(){
       delete shiftsCache[req.requester_date.substring(0,7)];
       window.__calendarVersion=(window.__calendarVersion||0)+1;
 
-    }else if(req.request_type==='swap'&&empId&&req.target_id&&req.requester_date&&req.target_date){
-      // Current post-swap state: empA has target's original shift on target_date, empB has empA's original on requester_date
-      const {data:cur1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',req.target_date).maybeSingle();
-      const {data:cur2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',req.target_id).eq('shift_date',req.requester_date).maybeSingle();
-      if(cur1?.id)await sb.from('shifts').delete().eq('id',cur1.id);
-      if(cur2?.id)await sb.from('shifts').delete().eq('id',cur2.id);
-      if(cur2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:req.requester_date,shift_type:cur2.shift_type},{onConflict:'employee_id,shift_date'});
-      if(cur1?.shift_type)await sb.from('shifts').upsert({employee_id:req.target_id,shift_date:req.target_date,shift_type:cur1.shift_type},{onConflict:'employee_id,shift_date'});
-      [req.requester_date?.substring(0,7),req.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
+    }else if(req.request_type==='swap'){
+      await revertSwap(req);
+      [req.requester_date?.substring(0,7),req.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{if(mk)delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
     }
 
@@ -1676,6 +1726,26 @@ function HistorialView(){
     setCancelling(null);
   };
 
+  // Agrupa solicitudes por swap_group_id para mostrar los cambios multi-día como una sola entrada
+  const groupedHist=useMemo(()=>{
+    const groups={};const nonSwap=[];
+    hist.forEach(h=>{
+      if(h.request_type==='swap'){
+        const gk=h.swap_group_id||`solo_${h.id}`;
+        (groups[gk]=groups[gk]||[]).push(h);
+      }else{nonSwap.push(h);}
+    });
+    const out=[];
+    Object.entries(groups).forEach(([gk,rows])=>{
+      const first=rows[0];
+      const multi=rows.length>1;
+      out.push({...first,id:gk,_isGroup:multi,_count:rows.length,_rows:rows,_sortKey:first.resolved_at||first.created_at});
+    });
+    nonSwap.forEach(h=>out.push({...h,_sortKey:h.resolved_at||h.created_at}));
+    out.sort((a,b)=>new Date(b._sortKey)-new Date(a._sortKey));
+    return out;
+  },[hist]);
+
   const TYPE_LABEL={'swap':'Cambio turno','vacation':'Vacaciones','personal_day':'Asuntos propios'};
   const STATUS_COLOR={'approved':'var(--green)','rejected':'var(--red)','cancelled':'var(--text3)'};
   const STATUS_LABEL={'approved':'Aprobada','rejected':'Rechazada','cancelled':'Cancelada'};
@@ -1683,14 +1753,14 @@ function HistorialView(){
   return(
     <div className="card" style={{marginBottom:16}}>
       <div className="card-header" style={{cursor:'pointer'}} onClick={()=>setOpen(p=>!p)}>
-        <span className="card-title">Historial de solicitudes {hist.length>0&&`(${hist.length})`}</span>
+        <span className="card-title">Historial de solicitudes {groupedHist.length>0&&`(${groupedHist.length})`}</span>
         <span style={{fontSize:11,color:'var(--text3)'}}>{open?'▲ ocultar':'▼ ver historial'}</span>
       </div>
       {open&&(
         <div>
           {loading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando historial...</div>}
-          {!loading&&hist.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes resueltas aún.</div>}
-          {!loading&&hist.length>0&&(
+          {!loading&&groupedHist.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes resueltas aún.</div>}
+          {!loading&&groupedHist.length>0&&(
             <div style={{maxHeight:340,overflowY:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead style={{position:'sticky',top:0,background:'var(--bg2)',zIndex:1}}>
@@ -1706,15 +1776,17 @@ function HistorialView(){
                 </tr>
               </thead>
               <tbody>
-                {hist.map(h=>(
+                {groupedHist.map(h=>(
                   <tr key={h.id} style={{borderBottom:'1px solid rgba(255,255,255,.04)',opacity:h.status==='cancelled'?.45:1}}>
                     <td style={{padding:'6px 8px',fontWeight:500}}>{h.requester_name}</td>
-                    <td style={{padding:'6px 8px',color:'var(--text3)'}}>{TYPE_LABEL[h.request_type]||h.request_type}</td>
+                    <td style={{padding:'6px 8px',color:'var(--text3)'}}>{h._isGroup?`Cambio turno · ${h._count}d`:(TYPE_LABEL[h.request_type]||h.request_type)}</td>
                     <td style={{padding:'6px 8px',color:'var(--text3)'}}>
                       {h.request_type==='swap'
-                        ?(h.requester_date&&h.target_date
-                          ?`${h.requester_date} ↔ ${h.target_date} con ${h.target_name||'–'}`
-                          :`con ${h.target_name||'–'}`)
+                        ?(h._isGroup
+                          ?`${h._count} días con ${h.target_name||'–'}`
+                          :(h.requester_date&&h.target_date
+                            ?`${h.requester_date} ↔ ${h.target_date} con ${h.target_name||'–'}`
+                            :`con ${h.target_name||'–'}`))
                         :h.request_type==='personal_day'
                         ?(h.requester_date||'–')
                         :(h.vacation_start&&h.vacation_end
@@ -1748,7 +1820,7 @@ function HistorialView(){
   );
 }
 
-function AdminView(){
+function AdminView({currentUser}){
   const [showNE,setShowNE]=useState(false);
   const [editingEmp,setEditingEmp]=useState(null);
   const [empSaving,setEmpSaving]=useState(false);
@@ -1812,26 +1884,71 @@ function AdminView(){
   const loadAdminReqs=()=>{
     setAdminReqsLoading(true);
     fetchPendingRequests().then(data=>{
-      const mapped=data.map(r=>({
+      // Agrupar solicitudes de cambio de turno por swap_group_id (solicitudes multi-día)
+      // Para vacaciones y asuntos, cada fila es independiente
+      const groups={}; // key=synthetic group id, value=array of shifted_request rows
+      const nonSwap=[];
+      data.forEach(r=>{
+        if(r.request_type==='swap'){
+          const gk=r.swap_group_id||`solo_${r.id}`;
+          (groups[gk]=groups[gk]||[]).push(r);
+        }else{
+          nonSwap.push(r);
+        }
+      });
+
+      const mapped=[];
+      // Solicitudes de cambio agrupadas
+      Object.entries(groups).forEach(([gk,rows])=>{
+        const first=rows[0];
+        const multi=rows.length>1;
+        const pairs=rows.map(r=>({
+          id:r.id,
+          reqDate:r.requester_date,
+          reqShift:r.requester_shift,
+          tgtDate:r.target_date,
+          tgtShift:r.target_shift,
+        })).sort((a,b)=>(a.reqDate||'').localeCompare(b.reqDate||''));
+        mapped.push({
+          id:gk, // synthetic group id
+          isGroup:multi,
+          groupId:first.swap_group_id||null,
+          ids:rows.map(r=>r.id), // todas las filas que componen este grupo
+          type:'cambio',
+          name:first.requester?.full_name||'–',
+          av:(first.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
+          desc:multi
+            ?`Cambio de ${rows.length} días con ${first.target?.full_name||'?'}`
+            :`Cambio ${first.requester_date||'?'} → ${first.target_date||'?'} con ${first.target?.full_name||'?'}`,
+          date:new Date(first.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
+          requester_id:first.requester?.id,
+          target_id:first.target?.id,
+          target_name:first.target?.full_name,
+          pairs, // array de pares con turno
+          notes:first.notes,
+        });
+      });
+      // Vacaciones/asuntos — sin cambios
+      nonSwap.forEach(r=>mapped.push({
         id:r.id,
-        type:r.request_type==='swap'?'cambio':r.request_type==='personal_day'?'asuntos':'vacaciones',
+        isGroup:false,
+        ids:[r.id],
+        type:r.request_type==='personal_day'?'asuntos':'vacaciones',
         name:r.requester?.full_name||'–',
         av:(r.requester?.full_name||'??').split(' ').filter(Boolean).map(w=>w[0]).join('').substring(0,2).toUpperCase(),
-        desc:r.request_type==='swap'
-          ?`Cambio ${r.requester_date||'?'} → ${r.target_date||'?'} con ${r.target?.full_name||'?'}`
-          :r.request_type==='personal_day'
+        desc:r.request_type==='personal_day'
           ?`Asuntos propios ${r.requester_date||'?'}`
           :`Vacaciones ${r.vacation_start||'?'} – ${r.vacation_end||'?'}`,
         date:new Date(r.created_at).toLocaleDateString('es-ES',{day:'numeric',month:'short'}),
         requester_id:r.requester?.id,
-        target_id:r.target?.id,
-        target_name:r.target?.full_name,
+        target_id:null,
         requester_date:r.requester_date,
-        target_date:r.target_date,
         vacation_start:r.vacation_start,
         vacation_end:r.vacation_end,
-        notes:r.notes
+        notes:r.notes,
       }));
+      // Ordenar por fecha de creación descendente
+      mapped.sort((a,b)=>new Date(b._created||0)-new Date(a._created||0));
       setAdminReqs(mapped);
       setAdminReqsLoading(false);
     });
@@ -1892,52 +2009,7 @@ function AdminView(){
         {adminReqsLoading&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Cargando...</div>}
         {!adminReqsLoading&&adminReqs.length===0&&<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No hay solicitudes pendientes.</div>}
         {adminReqs.map(r=>(
-          <div key={r.id} className="req-item">
-            <div className="req-av">{r.av}</div>
-            <div className="req-info">
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                <span className="req-name">{r.name}</span>
-                <span className="tag" style={{background:r.type==='cambio'?'var(--blue3)':r.type==='asuntos'?'var(--orange3)':'var(--green2)',color:r.type==='cambio'?'var(--blue)':r.type==='asuntos'?'var(--orange)':'var(--green)',borderColor:'transparent'}}>{r.type==='cambio'?'Cambio turno':r.type==='asuntos'?'Asuntos propios':'Vacaciones'}</span>
-                <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
-              </div>
-              <div className="req-desc">{r.desc}</div>
-              {r.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:3,fontStyle:'italic'}}>💬 {r.notes}</div>}
-            </div>
-            <div className="req-actions">
-              <button className="btn btn-ok btn-sm" onClick={async()=>{
-                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(!r.id||!r.id.includes('-'))return;
-                const empId=r.requester_id;
-                if(r.type==='vacaciones'&&empId&&r.vacation_start&&r.vacation_end){
-                  const days=[];let cur=r.vacation_start;
-                  while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
-                  for(const day of days){await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});}
-                  const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
-                  if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
-                  [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                }else if(r.type==='cambio'&&empId&&r.requester_date&&r.target_date&&r.target_id){
-                  const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
-                  const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
-                  if(s1?.id)await sb.from('shifts').delete().eq('id',s1.id);
-                  if(s2?.id)await sb.from('shifts').delete().eq('id',s2.id);
-                  if(s2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
-                  if(s1?.shift_type)await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
-                  [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                }else if(r.type==='asuntos'&&empId&&r.requester_date){
-                  await sb.from('shifts').upsert({employee_id:empId,shift_date:r.requester_date,shift_type:'P'},{onConflict:'employee_id,shift_date'});
-                  delete shiftsCache[r.requester_date.substring(0,7)];
-                  window.__calendarVersion=(window.__calendarVersion||0)+1;
-                }
-                await sb.from('shift_requests').update({status:'approved',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✓ Aprobar</button>
-              <button className="btn btn-danger btn-sm" onClick={async()=>{
-                setAdminReqs(prev=>prev.filter(x=>x.id!==r.id));
-                if(r.id&&r.id.includes('-'))await sb.from('shift_requests').update({status:'rejected',resolved_at:new Date().toISOString()}).eq('id',r.id);
-              }}>✗ Rechazar</button>
-            </div>
-          </div>
+          <AdminReqItem key={r.id} r={r} currentUserId={currentUser?.id} onResolved={()=>setAdminReqs(prev=>prev.filter(x=>x.id!==r.id))} />
         ))}
       </div>
 
@@ -2720,23 +2792,43 @@ function OperatorDashboard({user}){
         )}
         {myReqs.length===0
           ?<div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No tienes solicitudes recientes.</div>
-          :myReqs.map((r,i)=>{
-            const ti=reqLabel(r.request_type);
-            const desc=r.request_type==='swap'
-              ?`${r.requester_date||'?'} ↔ ${r.target_date||'?'}`
-              :r.request_type==='personal_day'
-              ?`${r.requester_date||'?'}`
-              :`${r.vacation_start||'?'} – ${r.vacation_end||'?'}`;
-            return(
-              <div key={i} className="op-req-item">
-                <span className="tag" style={{background:ti.bg,color:ti.c,borderColor:'transparent',fontSize:10}}>{ti.l}</span>
-                <span style={{flex:1,color:'var(--text2)'}}>{desc}</span>
-                <span className={`pill ${r.status==='approved'?'pill-ok':r.status==='rejected'?'pill-bad':r.status==='cancelled'?'pill-neutral':'pill-warn'}`} style={{fontSize:10}}>
-                  {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':r.status==='cancelled'?'✕ Cancelada':'⏳ Pendiente'}
-                </span>
-              </div>
-            );
-          })
+          :(() => {
+            // Agrupar swaps por swap_group_id
+            const groups={};const nonSwap=[];
+            myReqs.forEach(r=>{
+              if(r.request_type==='swap'){
+                const gk=r.swap_group_id||`solo_${r.id}`;
+                (groups[gk]=groups[gk]||[]).push(r);
+              }else{nonSwap.push(r);}
+            });
+            const items=[];
+            Object.entries(groups).forEach(([gk,rows])=>{
+              const first=rows[0];
+              const multi=rows.length>1;
+              items.push({
+                ...first,
+                _key:gk,
+                _count:rows.length,
+                _sortKey:first.created_at,
+                descOverride:multi?`Cambio de ${rows.length} días`:`${first.requester_date||'?'} ↔ ${first.target_date||'?'}`,
+              });
+            });
+            nonSwap.forEach(r=>items.push({...r,_key:r.id,_sortKey:r.created_at}));
+            items.sort((a,b)=>new Date(b._sortKey)-new Date(a._sortKey));
+            return items.map((r)=>{
+              const ti=reqLabel(r.request_type);
+              const desc=r.descOverride||(r.request_type==='personal_day'?`${r.requester_date||'?'}`:`${r.vacation_start||'?'} – ${r.vacation_end||'?'}`);
+              return(
+                <div key={r._key} className="op-req-item">
+                  <span className="tag" style={{background:ti.bg,color:ti.c,borderColor:'transparent',fontSize:10}}>{ti.l}</span>
+                  <span style={{flex:1,color:'var(--text2)'}}>{desc}</span>
+                  <span className={`pill ${r.status==='approved'?'pill-ok':r.status==='rejected'?'pill-bad':r.status==='cancelled'?'pill-neutral':'pill-warn'}`} style={{fontSize:10}}>
+                    {r.status==='approved'?'✓ Aprobada':r.status==='rejected'?'✗ Rechazada':r.status==='cancelled'?'✕ Cancelada':'⏳ Pendiente'}
+                  </span>
+                </div>
+              );
+            });
+          })()
         }
       </div>
 
@@ -2753,10 +2845,58 @@ function OperatorDashboard({user}){
 function OpRequestModal({modal,userId,userName,onClose,onSaved}){
   const [emps,setEmps]=useState([]);
   const [form,setForm]=useState({date1:'',date2:'',targetId:'',reason:''});
+  // Estado específico de cambio de turno multi-día
+  // pairs = [{id, reqDate, tgtDate, reqShift?, tgtShift?}]
+  const [swapPairs,setSwapPairs]=useState([{id:1,reqDate:'',tgtDate:'',reqShift:null,tgtShift:null}]);
+  const [shiftsLookupVer,setShiftsLookupVer]=useState(0); // trigger para recargar turnos
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState('');
   const [confirming,setConfirming]=useState(false);
   useEffect(()=>{fetchEmployees().then(d=>setEmps(d||[]));},[]);
+
+  // Al cambiar cualquier fecha o el compañero, consultamos los turnos reales y los
+  // pintamos en los badges. Evitamos consultas innecesarias agrupando todas las
+  // fechas en una sola llamada.
+  useEffect(()=>{
+    if(modal!=='cambio')return;
+    const targetId=form.targetId;
+    if(!targetId){setSwapPairs(prev=>prev.map(p=>({...p,reqShift:null,tgtShift:null})));return;}
+    const reqDates=swapPairs.map(p=>p.reqDate).filter(Boolean);
+    const tgtDates=swapPairs.map(p=>p.tgtDate).filter(Boolean);
+    const allDates=[...new Set([...reqDates,...tgtDates])];
+    if(allDates.length===0)return;
+    fetchShiftsFor([userId,targetId],allDates).then(map=>{
+      setSwapPairs(prev=>prev.map(p=>({
+        ...p,
+        reqShift:p.reqDate?(map[`${userId}_${p.reqDate}`]||null):null,
+        tgtShift:p.tgtDate?(map[`${targetId}_${p.tgtDate}`]||null):null,
+      })));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[form.targetId,shiftsLookupVer,modal,userId]);
+
+  const updatePair=(id,field,val)=>{
+    setSwapPairs(prev=>prev.map(p=>p.id===id?{...p,[field]:val,[field==='reqDate'?'reqShift':'tgtShift']:null}:p));
+    setShiftsLookupVer(v=>v+1);
+  };
+  const addPair=()=>setSwapPairs(prev=>[...prev,{id:Date.now(),reqDate:'',tgtDate:'',reqShift:null,tgtShift:null}]);
+  const removePair=(id)=>setSwapPairs(prev=>prev.length>1?prev.filter(p=>p.id!==id):prev);
+
+  // Añadir semana completa (7 días consecutivos) a partir de una fecha lunes
+  const addWeek=()=>{
+    const today=new Date();
+    const dayOfWeek=today.getDay();
+    const monday=new Date(today);
+    monday.setDate(today.getDate()-((dayOfWeek+6)%7)+7); // próximo lunes
+    const days=[];
+    for(let i=0;i<7;i++){
+      const d=new Date(monday);d.setDate(monday.getDate()+i);
+      days.push(d.toISOString().split('T')[0]);
+    }
+    const newPairs=days.map((d,i)=>({id:Date.now()+i,reqDate:d,tgtDate:d,reqShift:null,tgtShift:null}));
+    setSwapPairs(newPairs);
+    setShiftsLookupVer(v=>v+1);
+  };
 
   const validateAsuntos=(dateStr)=>{
     if(!dateStr)return null;
@@ -2776,7 +2916,23 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
   const validate=()=>{
     setErr('');
     if(modal==='cambio'){
-      if(!form.date1||!form.date2||!form.targetId){setErr('Completa todos los campos');return false;}
+      if(!form.targetId){setErr('Selecciona el compañero con quien cambias');return false;}
+      if(swapPairs.length===0){setErr('Añade al menos un día para cambiar');return false;}
+      // Todos los pares deben tener fechas y ambos operadores con turno de trabajo ese día
+      for(let i=0;i<swapPairs.length;i++){
+        const p=swapPairs[i];
+        if(!p.reqDate||!p.tgtDate){setErr(`Par ${i+1}: completa las dos fechas`);return false;}
+        if(!isWorkShift(p.reqShift)){setErr(`Par ${i+1} (${p.reqDate}): no tienes un turno de trabajo ese día (${SHIFT_LABEL_FULL[p.reqShift]||'sin turno'}). Solo puedes ceder días con turno M/T/N/D.`);return false;}
+        if(!isWorkShift(p.tgtShift)){setErr(`Par ${i+1} (${p.tgtDate}): tu compañero no trabaja ese día (${SHIFT_LABEL_FULL[p.tgtShift]||'sin turno'}). Solo se puede cambiar con días donde ambos tengáis turno M/T/N/D.`);return false;}
+      }
+      // Detectar pares duplicados
+      const seen=new Set();
+      for(let i=0;i<swapPairs.length;i++){
+        const p=swapPairs[i];
+        const k=`${p.reqDate}_${p.tgtDate}`;
+        if(seen.has(k)){setErr(`Par ${i+1}: duplicado (${p.reqDate} ↔ ${p.tgtDate})`);return false;}
+        seen.add(k);
+      }
     }else if(modal==='asuntos'){
       if(!form.date1){setErr('Selecciona una fecha');return false;}
       const valErr=validateAsuntos(form.date1);
@@ -2797,7 +2953,23 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
     let reqType='';
     if(modal==='cambio'){
       reqType='swap';
-      await sb.from('shift_requests').insert({request_type:'swap',requester_id:userId,requester_date:form.date1,target_date:form.date2,target_id:form.targetId,status:'pending',notes:form.reason||null});
+      // Siempre generamos un swap_group_id — incluso para un único par — para que la
+      // lógica de admin sea uniforme (agrupación, aprobación atómica)
+      const groupId=genGroupId();
+      const rows=swapPairs.map(p=>({
+        request_type:'swap',
+        requester_id:userId,
+        target_id:form.targetId,
+        requester_date:p.reqDate,
+        requester_shift:p.reqShift,
+        target_date:p.tgtDate,
+        target_shift:p.tgtShift,
+        status:'pending',
+        notes:form.reason||null,
+        swap_group_id:groupId,
+      }));
+      const{error:insErr}=await sb.from('shift_requests').insert(rows);
+      if(insErr){setErr('Error al crear solicitud: '+insErr.message);setSaving(false);setConfirming(false);return;}
     }else if(modal==='asuntos'){
       reqType='personal_day';
       const {data:existing}=await sb.from('shift_requests').select('id').eq('requester_id',userId).eq('request_type','personal_day').in('status',['pending','approved']).limit(1);
@@ -2818,10 +2990,9 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
     if(modal==='cambio'){
       const target=emps.find(e=>e.id===form.targetId);
       return[
-        {l:'Tipo',v:'Cambio de turno'},
-        {l:'Cedes tu día',v:form.date1?new Date(form.date1+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
-        {l:'Trabajas el día',v:form.date2?new Date(form.date2+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}):'—'},
-        {l:'Con',v:target?.full_name||'—'},
+        {l:'Tipo',v:swapPairs.length>1?`Cambio múltiple (${swapPairs.length} días)`:'Cambio de turno'},
+        {l:'Compañero',v:target?.full_name||'—'},
+        {l:'Pares de cambio',v:'__swap_pairs__'}, // marcador especial — se renderiza como tabla
       ];
     }if(modal==='asuntos'){
       return[
@@ -2848,14 +3019,79 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
             {err&&<div className="login-err">{err}</div>}
             {modal==='cambio'?(
               <>
-                <div className="fg"><label className="fl">Tu día (el que cedes)</label><input className="fi" type="date" value={form.date1} onChange={e=>setForm(p=>({...p,date1:e.target.value}))}/></div>
-                <div className="fg"><label className="fl">Día que quieres trabajar</label><input className="fi" type="date" value={form.date2} onChange={e=>setForm(p=>({...p,date2:e.target.value}))}/></div>
+                <div className="alert alert-info" style={{marginBottom:12,fontSize:11,lineHeight:1.5}}>
+                  <span>ℹ️</span>
+                  <span>Cedes un <strong>turno tuyo</strong> a cambio de un <strong>turno de tu compañero</strong>. Puedes añadir varios días (ej. semana completa). <u>Solo se permiten días donde ambos tenéis turno de trabajo</u> (M, T, N o D).</span>
+                </div>
                 <div className="fg"><label className="fl">Con quién cambias</label>
                   <select className="fs" value={form.targetId} onChange={e=>setForm(p=>({...p,targetId:e.target.value}))}>
                     <option value="">Seleccionar compañero...</option>
-                    {emps.filter(e=>e.id!==userId).map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
+                    {emps.filter(e=>e.id!==userId&&e.active!==false).map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
                   </select>
                 </div>
+                {form.targetId&&(
+                  <>
+                    <div style={{fontSize:11,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--text3)',margin:'16px 0 6px',paddingBottom:4,borderBottom:'1px solid var(--border)',fontWeight:600}}>
+                      Días a cambiar {swapPairs.length>1&&`(${swapPairs.length})`}
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                      {swapPairs.map((p,idx)=>{
+                        const reqOk=!p.reqDate||isWorkShift(p.reqShift);
+                        const tgtOk=!p.tgtDate||isWorkShift(p.tgtShift);
+                        return(
+                          <div key={p.id} style={{background:'var(--bg3)',borderRadius:6,padding:'10px 12px',border:`1px solid ${(reqOk&&tgtOk)?'var(--border)':'var(--red)'}`}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                              <span style={{fontSize:11,color:'var(--text3)',fontWeight:600}}>Par #{idx+1}</span>
+                              {swapPairs.length>1&&<button onClick={()=>removePair(p.id)} style={{background:'transparent',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12,padding:'0 4px'}}>✕ Eliminar</button>}
+                            </div>
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                              <div>
+                                <label style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:3}}>Tu día (cedes)</label>
+                                <input className="fi" type="date" value={p.reqDate} onChange={e=>updatePair(p.id,'reqDate',e.target.value)} style={{fontSize:12}}/>
+                                <div style={{fontSize:11,marginTop:4,minHeight:18,display:'flex',alignItems:'center',gap:6}}>
+                                  {p.reqDate?(
+                                    p.reqShift?(
+                                      <>
+                                        <span style={{padding:'2px 8px',borderRadius:3,background:SHIFT_COLOR[p.reqShift]||'var(--bg2)',color:'#fff',fontWeight:700,fontSize:11}}>{p.reqShift}</span>
+                                        <span style={{color:isWorkShift(p.reqShift)?'var(--text3)':'var(--red)'}}>{SHIFT_LABEL_FULL[p.reqShift]||p.reqShift}</span>
+                                      </>
+                                    ):(
+                                      <span style={{color:'var(--red)'}}>⚠ No tienes turno asignado</span>
+                                    )
+                                  ):(
+                                    <span style={{color:'var(--text3)'}}>Selecciona fecha</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:3}}>Día suyo (trabajarás)</label>
+                                <input className="fi" type="date" value={p.tgtDate} onChange={e=>updatePair(p.id,'tgtDate',e.target.value)} style={{fontSize:12}}/>
+                                <div style={{fontSize:11,marginTop:4,minHeight:18,display:'flex',alignItems:'center',gap:6}}>
+                                  {p.tgtDate?(
+                                    p.tgtShift?(
+                                      <>
+                                        <span style={{padding:'2px 8px',borderRadius:3,background:SHIFT_COLOR[p.tgtShift]||'var(--bg2)',color:'#fff',fontWeight:700,fontSize:11}}>{p.tgtShift}</span>
+                                        <span style={{color:isWorkShift(p.tgtShift)?'var(--text3)':'var(--red)'}}>{SHIFT_LABEL_FULL[p.tgtShift]||p.tgtShift}</span>
+                                      </>
+                                    ):(
+                                      <span style={{color:'var(--red)'}}>⚠ Compañero sin turno ese día</span>
+                                    )
+                                  ):(
+                                    <span style={{color:'var(--text3)'}}>Selecciona fecha</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:'flex',gap:8,marginTop:10}}>
+                      <button className="btn btn-ghost btn-sm" onClick={addPair} type="button">+ Añadir día</button>
+                      <button className="btn btn-ghost btn-sm" onClick={addWeek} type="button" title="Añade los 7 días de la semana próxima">🗓 Añadir semana completa</button>
+                    </div>
+                  </>
+                )}
               </>
             ):modal==='asuntos'?(
               <>
@@ -2909,10 +3145,28 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
             {err&&<div className="login-err">{err}</div>}
             <div className="card" style={{background:'var(--bg3)',marginBottom:16,padding:'14px 16px'}}>
               {getSummary().map(({l,v})=>(
-                <div key={l} style={{display:'flex',gap:12,padding:'5px 0',borderBottom:'1px solid rgba(42,51,80,.2)',fontSize:13}}>
-                  <span style={{color:'var(--text3)',minWidth:130}}>{l}</span>
-                  <span style={{fontWeight:500}}>{v}</span>
-                </div>
+                v==='__swap_pairs__'?(
+                  <div key={l} style={{padding:'5px 0',borderBottom:'1px solid rgba(42,51,80,.2)',fontSize:12}}>
+                    <div style={{color:'var(--text3)',marginBottom:6}}>{l}</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                      {swapPairs.map((p,i)=>(
+                        <div key={p.id} style={{display:'flex',gap:8,alignItems:'center',fontSize:12}}>
+                          <span style={{color:'var(--text3)',minWidth:20}}>{i+1}.</span>
+                          <span style={{minWidth:100}}>{p.reqDate?new Date(p.reqDate+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'2-digit',month:'short'}):'?'}</span>
+                          <span style={{padding:'1px 6px',borderRadius:3,background:SHIFT_COLOR[p.reqShift]||'var(--bg2)',color:'#fff',fontSize:10,fontWeight:700}}>{p.reqShift||'—'}</span>
+                          <span style={{color:'var(--text3)'}}>↔</span>
+                          <span style={{minWidth:100}}>{p.tgtDate?new Date(p.tgtDate+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'2-digit',month:'short'}):'?'}</span>
+                          <span style={{padding:'1px 6px',borderRadius:3,background:SHIFT_COLOR[p.tgtShift]||'var(--bg2)',color:'#fff',fontSize:10,fontWeight:700}}>{p.tgtShift||'—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ):(
+                  <div key={l} style={{display:'flex',gap:12,padding:'5px 0',borderBottom:'1px solid rgba(42,51,80,.2)',fontSize:13}}>
+                    <span style={{color:'var(--text3)',minWidth:130}}>{l}</span>
+                    <span style={{fontWeight:500}}>{v}</span>
+                  </div>
+                )
               ))}
               {form.reason&&(
                 <div style={{display:'flex',gap:12,padding:'5px 0',fontSize:13}}>
@@ -3518,6 +3772,130 @@ function ResumenRRHH(){
   );
 }
 
+// ── ADMIN REQ ITEM ─────────────────────────────────────────────────────────────
+// Un ítem en la lista de solicitudes pendientes del admin.
+// Para cambios de turno multi-día muestra los pares expandibles y aprueba/rechaza el grupo atómicamente.
+function AdminReqItem({r,currentUserId,onResolved}){
+  const [expanded,setExpanded]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState('');
+
+  const tagColor=r.type==='cambio'?{bg:'var(--blue3)',fg:'var(--blue)'}:r.type==='asuntos'?{bg:'var(--orange3)',fg:'var(--orange)'}:{bg:'var(--green2)',fg:'var(--green)'};
+  const tagLabel=r.type==='cambio'?(r.isGroup?`Cambio turno · ${r.pairs.length} días`:'Cambio turno'):r.type==='asuntos'?'Asuntos propios':'Vacaciones';
+
+  // Aplica un swap individual (1 par) — reutiliza la lógica anterior
+  const applySwap=async(reqEmpId,tgtEmpId,reqDate,tgtDate)=>{
+    const{data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',reqEmpId).eq('shift_date',reqDate).maybeSingle();
+    const{data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',tgtEmpId).eq('shift_date',tgtDate).maybeSingle();
+    // Validación: ambos deben tener turno de trabajo (M/T/N/D), nunca libre/vacaciones/asuntos
+    if(!isWorkShift(s1?.shift_type))return`${reqDate}: el solicitante no tiene turno de trabajo asignado (${s1?.shift_type||'libre'})`;
+    if(!isWorkShift(s2?.shift_type))return`${tgtDate}: el compañero no tiene turno de trabajo asignado (${s2?.shift_type||'libre'})`;
+    if(s1.id)await sb.from('shifts').delete().eq('id',s1.id);
+    if(s2.id)await sb.from('shifts').delete().eq('id',s2.id);
+    await sb.from('shifts').upsert({employee_id:reqEmpId,shift_date:tgtDate,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
+    await sb.from('shifts').upsert({employee_id:tgtEmpId,shift_date:reqDate,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
+    return null;
+  };
+
+  const handleApprove=async()=>{
+    setBusy(true);setErr('');
+    try{
+      if(r.type==='cambio'){
+        // Validar y aplicar TODOS los pares antes de marcar como aprobado
+        for(const p of r.pairs){
+          const eMsg=await applySwap(r.requester_id,r.target_id,p.reqDate,p.tgtDate);
+          if(eMsg){setErr(`No se pudo aplicar el par ${p.reqDate}↔${p.tgtDate}: ${eMsg}`);setBusy(false);return;}
+        }
+        // Invalidar cache de meses afectados
+        const months=new Set();
+        r.pairs.forEach(p=>{months.add(p.reqDate?.substring(0,7));months.add(p.tgtDate?.substring(0,7));});
+        months.forEach(mk=>{if(mk)delete shiftsCache[mk];});
+        window.__calendarVersion=(window.__calendarVersion||0)+1;
+        // Marcar todas las filas del grupo como approved atómicamente
+        if(r.groupId){
+          const{data,error}=await sb.rpc('resolve_swap_group',{p_group_id:r.groupId,p_new_status:'approved',p_resolver_id:currentUserId});
+          if(error||data?.[0]?.error){setErr(`Error al actualizar estado: ${error?.message||data?.[0]?.error}`);setBusy(false);return;}
+        }else{
+          // Solicitud antigua sin group_id
+          for(const id of r.ids){
+            await sb.from('shift_requests').update({status:'approved',approved_by:currentUserId,resolved_at:new Date().toISOString()}).eq('id',id);
+          }
+        }
+        await logAudit('request_approved',{type:'swap',count:r.pairs.length,requester_id:r.requester_id,target_id:r.target_id},currentUserId);
+      }else if(r.type==='vacaciones'&&r.requester_id&&r.vacation_start&&r.vacation_end){
+        const days=[];let cur=r.vacation_start;
+        while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
+        for(const day of days){await sb.from('shifts').upsert({employee_id:r.requester_id,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});}
+        const{data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',r.requester_id).eq('year',2026).single();
+        if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',r.requester_id).eq('year',2026);
+        [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
+        window.__calendarVersion=(window.__calendarVersion||0)+1;
+        await sb.from('shift_requests').update({status:'approved',approved_by:currentUserId,resolved_at:new Date().toISOString()}).eq('id',r.id);
+        await logAudit('request_approved',{type:'vacation',days:days.length,requester_id:r.requester_id},currentUserId);
+      }else if(r.type==='asuntos'&&r.requester_id&&r.requester_date){
+        await sb.from('shifts').upsert({employee_id:r.requester_id,shift_date:r.requester_date,shift_type:'P'},{onConflict:'employee_id,shift_date'});
+        delete shiftsCache[r.requester_date.substring(0,7)];
+        window.__calendarVersion=(window.__calendarVersion||0)+1;
+        await sb.from('shift_requests').update({status:'approved',approved_by:currentUserId,resolved_at:new Date().toISOString()}).eq('id',r.id);
+        await logAudit('request_approved',{type:'personal_day',requester_id:r.requester_id},currentUserId);
+      }
+      onResolved();
+    }catch(ex){setErr('Error: '+(ex?.message||ex));setBusy(false);}
+  };
+
+  const handleReject=async()=>{
+    if(!window.confirm(`¿Rechazar esta solicitud${r.isGroup?' completa ('+r.pairs.length+' días)':''}?`))return;
+    setBusy(true);setErr('');
+    try{
+      if(r.type==='cambio'&&r.groupId){
+        const{error}=await sb.rpc('resolve_swap_group',{p_group_id:r.groupId,p_new_status:'rejected',p_resolver_id:currentUserId});
+        if(error){setErr('Error: '+error.message);setBusy(false);return;}
+      }else{
+        for(const id of r.ids){
+          await sb.from('shift_requests').update({status:'rejected',approved_by:currentUserId,resolved_at:new Date().toISOString()}).eq('id',id);
+        }
+      }
+      await logAudit('request_rejected',{type:r.type,count:r.ids.length},currentUserId);
+      onResolved();
+    }catch(ex){setErr('Error: '+(ex?.message||ex));setBusy(false);}
+  };
+
+  return(
+    <div className="req-item">
+      <div className="req-av">{r.av}</div>
+      <div className="req-info">
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+          <span className="req-name">{r.name}</span>
+          <span className="tag" style={{background:tagColor.bg,color:tagColor.fg,borderColor:'transparent'}}>{tagLabel}</span>
+          {r.isGroup&&<button onClick={()=>setExpanded(v=>!v)} style={{background:'transparent',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:11,padding:0}}>{expanded?'▲ ocultar':'▼ ver días'}</button>}
+          <span style={{fontSize:11,color:'var(--text3)',marginLeft:'auto'}}>{r.date}</span>
+        </div>
+        <div className="req-desc">{r.desc}</div>
+        {r.isGroup&&expanded&&(
+          <div style={{marginTop:8,background:'var(--bg3)',borderRadius:4,padding:'8px 10px',fontSize:11,lineHeight:1.7}}>
+            {r.pairs.map((p,i)=>(
+              <div key={p.id} style={{display:'flex',gap:8,alignItems:'center'}}>
+                <span style={{color:'var(--text3)',minWidth:20}}>{i+1}.</span>
+                <span style={{minWidth:90}}>{p.reqDate?new Date(p.reqDate+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'2-digit',month:'short'}):'?'}</span>
+                <span style={{padding:'1px 6px',borderRadius:3,background:SHIFT_COLOR[p.reqShift]||'var(--bg2)',color:p.reqShift?'#fff':'var(--text3)',fontSize:10,fontWeight:600,minWidth:20,textAlign:'center'}}>{p.reqShift||'—'}</span>
+                <span style={{color:'var(--text3)'}}>↔</span>
+                <span style={{minWidth:90}}>{p.tgtDate?new Date(p.tgtDate+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'2-digit',month:'short'}):'?'}</span>
+                <span style={{padding:'1px 6px',borderRadius:3,background:SHIFT_COLOR[p.tgtShift]||'var(--bg2)',color:p.tgtShift?'#fff':'var(--text3)',fontSize:10,fontWeight:600,minWidth:20,textAlign:'center'}}>{p.tgtShift||'—'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {r.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:3,fontStyle:'italic'}}>💬 {r.notes}</div>}
+        {err&&<div style={{fontSize:11,color:'var(--red)',marginTop:4}}>⚠ {err}</div>}
+      </div>
+      <div className="req-actions">
+        <button className="btn btn-ok btn-sm" disabled={busy} onClick={handleApprove}>{busy?'…':'✓ Aprobar'}</button>
+        <button className="btn btn-danger btn-sm" disabled={busy} onClick={handleReject}>✗ Rechazar</button>
+      </div>
+    </div>
+  );
+}
+
 // ── APP ────────────────────────────────────────────────────────────────────────
 function App(){
   // ── Auth state ────────────────────────────────────────────────────────────
@@ -3585,7 +3963,7 @@ function App(){
     calendar:()=><CalendarView isAdmin={isAdmin}/>,
     team:TeamView,
     requests:RequestsView,
-    admin:AdminView,
+    admin:()=><AdminView currentUser={currentUser}/>,
     caln2:CalN2View,
     rrhh:ResumenRRHH,
     opdashboard:()=><OperatorDashboard user={currentUser}/>,
