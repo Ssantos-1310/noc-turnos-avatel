@@ -451,13 +451,17 @@ async function fetchN2Assignments() {
 }
 
 async function saveN2Assignment(weekNumber, employeeShortName) {
+  // Resolver el empleado por short_name o full_name
   let { data: emp } = await sb.from('employees').select('id').eq('short_name', employeeShortName).maybeSingle();
   if (!emp) {
     const { data: emp2 } = await sb.from('employees').select('id').eq('full_name', employeeShortName).maybeSingle();
     emp = emp2;
   }
-  if (!emp) return;
-  await sb.from('n2_assignments').update({ employee_id: emp.id }).eq('week_number', weekNumber).eq('year', 2026);
+  if (!emp) throw new Error(`Empleado "${employeeShortName}" no encontrado en BD`);
+  // Upsert para evitar fallos silenciosos cuando la fila no existe todavía
+  const { error } = await sb.from('n2_assignments')
+    .upsert({ week_number: weekNumber, year: 2026, employee_id: emp.id }, { onConflict: 'week_number,year' });
+  if (error) throw new Error(error.message);
 }
 
 // ── DEV DIAGNOSTICS ──────────────────────────────────────────────────────────
@@ -2882,19 +2886,43 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
   const addPair=()=>setSwapPairs(prev=>[...prev,{id:Date.now(),reqDate:'',tgtDate:'',reqShift:null,tgtShift:null}]);
   const removePair=(id)=>setSwapPairs(prev=>prev.length>1?prev.filter(p=>p.id!==id):prev);
 
-  // Añadir semana completa (7 días consecutivos) a partir de una fecha lunes
+  // "Completar semana" — a partir del PRIMER par (que el usuario ya haya rellenado),
+  // añade los 6 días siguientes consecutivos tanto para su fecha como para la del compañero.
+  // Si no hay par base con fechas, toma la próxima semana laboral (lunes).
   const addWeek=()=>{
-    const today=new Date();
-    const dayOfWeek=today.getDay();
-    const monday=new Date(today);
-    monday.setDate(today.getDate()-((dayOfWeek+6)%7)+7); // próximo lunes
-    const days=[];
-    for(let i=0;i<7;i++){
-      const d=new Date(monday);d.setDate(monday.getDate()+i);
-      days.push(d.toISOString().split('T')[0]);
+    setErr('');
+    // Buscar el último par con ambas fechas rellenas como "base" — es el más reciente que el usuario tocó
+    const base=[...swapPairs].reverse().find(p=>p.reqDate&&p.tgtDate);
+    let baseReq,baseTgt;
+    if(base){
+      baseReq=base.reqDate;
+      baseTgt=base.tgtDate;
+    }else{
+      // Fallback: próximo lunes
+      const today=new Date();
+      const dayOfWeek=today.getDay();
+      const monday=new Date(today);
+      monday.setDate(today.getDate()-((dayOfWeek+6)%7)+7);
+      baseReq=baseTgt=monday.toISOString().split('T')[0];
     }
-    const newPairs=days.map((d,i)=>({id:Date.now()+i,reqDate:d,tgtDate:d,reqShift:null,tgtShift:null}));
-    setSwapPairs(newPairs);
+    // Generar los 6 días siguientes al día base, tanto para reqDate como para tgtDate
+    const nextDay=(dateStr,offset)=>{
+      const d=new Date(dateStr+'T12:00:00');
+      d.setDate(d.getDate()+offset);
+      return d.toISOString().split('T')[0];
+    };
+    const extras=[];
+    for(let i=1;i<=6;i++){
+      extras.push({
+        id:Date.now()+i,
+        reqDate:nextDay(baseReq,i),
+        tgtDate:nextDay(baseTgt,i),
+        reqShift:null,tgtShift:null,
+      });
+    }
+    // Si había un par base, lo conservamos como primero; si no, creamos uno con las fechas fallback
+    const firstPair=base?{...base}:{id:Date.now(),reqDate:baseReq,tgtDate:baseTgt,reqShift:null,tgtShift:null};
+    setSwapPairs([firstPair,...extras]);
     setShiftsLookupVer(v=>v+1);
   };
 
@@ -3088,7 +3116,7 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
                     </div>
                     <div style={{display:'flex',gap:8,marginTop:10}}>
                       <button className="btn btn-ghost btn-sm" onClick={addPair} type="button">+ Añadir día</button>
-                      <button className="btn btn-ghost btn-sm" onClick={addWeek} type="button" title="Añade los 7 días de la semana próxima">🗓 Añadir semana completa</button>
+                      <button className="btn btn-ghost btn-sm" onClick={addWeek} type="button" title="Toma el último par con fechas como base y añade los 6 días siguientes (consecutivos)">🗓 Completar semana (+6 días)</button>
                     </div>
                   </>
                 )}
@@ -3311,7 +3339,8 @@ const RESPONSABLES=[
   {name:'Sergio Santos Ruiz',approver:'Joaquín',role:'responsable'},
   {name:'Alberto Alvarez Paz',approver:'Joaquín',role:'coordinador'},
 ];
-const N2_MEMBERS=['Sergio Santos Ruiz','Alberto Alvarez Paz','Arturo Chiappe Vela'];
+// Nombres cortos de los responsables N2 — DEBEN coincidir con employees.short_name en BD
+const N2_MEMBERS=['Sergio Santos','Alberto Alvarez','Arturo Chiappe'];
 const SOCIEDAD='AVATEL TELECOM, S.A.';
 const ZONA='CENTRAL';
 const GUARDIA_N2_IMPORTE=250;
@@ -3348,21 +3377,49 @@ function weekHasFestivo(week){
 // ── CALENDARIO N2 ─────────────────────────────────────────────────────────────
 function CalN2View(){
   const today=new Date();
+  // Rotación por defecto (solo si BD aún no respondió) — usa los 3 miembros ciclando
   const [assignments,setAssignments]=useState(()=>{
-    const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%2];});return a;
+    const a={};WEEKS_2026.forEach((w,i)=>{a[w.wn]=N2_MEMBERS[i%N2_MEMBERS.length];});return a;
   });
+  const [loaded,setLoaded]=useState(false);
   const [pendingAssign,setPendingAssign]=useState(null); // {wn, person, week}
   const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState('');
+
+  // Utilidad: convierte las filas de BD en {wn: short_name}
+  const rowsToMap=(rows)=>{
+    const a={};
+    (rows||[]).forEach(row=>{ if(row.employee?.short_name&&row.week_number) a[row.week_number]=row.employee.short_name; });
+    return a;
+  };
+
+  // Carga inicial — sin ella, todo partía de una rotación falsa y el "cambio" nunca se veía reflejado
+  useEffect(()=>{
+    fetchN2Assignments().then(rows=>{
+      const a=rowsToMap(rows);
+      // Solo reemplazamos las semanas que tienen asignación en BD — conservamos la rotación por defecto
+      // para semanas sin registro, así nunca queda vacío
+      setAssignments(prev=>({...prev,...a}));
+      setLoaded(true);
+    }).catch(e=>{setErr('No se pudo cargar la asignación de guardia: '+(e?.message||e));setLoaded(true);});
+  },[]);
+
   const assign=async(wn,person)=>{
-    setSaving(true);
+    setSaving(true);setErr('');
+    // Optimistic update — usamos el short_name (que es lo que devuelve la BD)
+    const prevAssign=assignments[wn];
     setAssignments(p=>({...p,[wn]:person}));
-    await saveN2Assignment(wn, person);
-    // Reload to sync summary counts
-    const fresh = await fetchN2Assignments();
-    if(fresh.length>0){
-      const a={};
-      fresh.forEach(row=>{ if(row.employee?.short_name) a[row.week_number]=row.employee.short_name; });
-      setAssignments(a);
+    try{
+      await saveN2Assignment(wn, person);
+      // Recarga desde BD para sincronizar el summary y confirmar el cambio
+      const fresh=await fetchN2Assignments();
+      const a=rowsToMap(fresh);
+      // IMPORTANTE: merge (no reemplazo total) — preservamos lo que no venga de BD
+      setAssignments(prev=>({...prev,...a}));
+    }catch(e){
+      // Rollback si falla
+      setAssignments(p=>({...p,[wn]:prevAssign}));
+      setErr('Error al guardar: '+(e?.message||e));
     }
     setPendingAssign(null);
     setSaving(false);
@@ -3408,8 +3465,9 @@ function CalN2View(){
         </div>
       </div>
       <div className="alert alert-info" style={{marginBottom:12}}>
-        <span>ℹ️</span><span>Haz clic en un nombre para reasignar la guardia. ⚡ = semana con festivo incluido.</span>
+        <span>ℹ️</span><span>Haz clic en un nombre para reasignar la guardia. ⚡ = semana con festivo incluido.{!loaded&&<span style={{marginLeft:8,color:'var(--text3)'}}>· Cargando asignaciones desde BD…</span>}</span>
       </div>
+      {err&&<div className="alert alert-danger" style={{marginBottom:12}}><span>⚠</span><span>{err}</span></div>}
       <div className="card" style={{padding:0,overflow:'hidden'}}>
         {Array.from({length:12},(_,mi)=>{
           const mWeeks=WEEKS_2026.filter(w=>w.start.getMonth()===mi);
