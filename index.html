@@ -1753,7 +1753,7 @@ function AdminView(){
     const {data:inserted,error}=await sb.from('employees').insert(rec).select('id').single();
     if(error){setNewUErr(error.message);setEmpSaving(false);return;}
     // Crear usuario en Supabase Auth via Edge Function
-    let authOk=false;
+    let authOk=false,authErrMsg='';
     try{
       const session=(await sb.auth.getSession()).data.session;
       const authResp=await fetch(`${EF_URL}/manage-auth-user`,{
@@ -1765,8 +1765,10 @@ function AdminView(){
       if(authData.auth_id){
         await sb.from('employees').update({auth_id:authData.auth_id}).eq('id',inserted.id);
         authOk=true;
+      }else{
+        authErrMsg=authData.error||'La cuenta de acceso no pudo crearse automáticamente.';
       }
-    }catch(efErr){setNewUErr('Empleado creado en BD pero error al crear acceso Auth. Comunica al administrador.');}
+    }catch(efErr){authErrMsg='Error de conexión con el servicio de autenticación.';}
     // Auto-crear saldo de vacaciones para operadores nuevos
     if(role==='operator'&&inserted?.id){
       await sb.from('vacation_balance').insert({employee_id:inserted.id,year:2026});
@@ -1774,7 +1776,8 @@ function AdminView(){
     const {data}=await sb.from('employees').select('*').order('full_name');
     setEmpList(data||[]);
     setEmpSaving(false);setShowNE(false);resetNewUser();
-    if(authOk)setCreatedTempPwd({name:full_name,email:email.trim(),pwd:tempPwd});
+    // Mostrar siempre el modal con la contraseña generada — el admin debe comunicarla al empleado
+    setCreatedTempPwd({name:full_name,email:email.trim(),pwd:tempPwd,authOk,authErrMsg});
   };
 
   const loadAdminReqs=()=>{
@@ -2136,18 +2139,25 @@ function AdminView(){
       {createdTempPwd&&(
         <div className="modal-overlay" onClick={()=>setCreatedTempPwd(null)}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-title">✓ Usuario creado</div>
+            <div className="modal-title">{createdTempPwd.authOk?'✓ Usuario creado':'⚠ Usuario creado (revisar acceso)'}</div>
             <div className="modal-sub">{createdTempPwd.name} · {createdTempPwd.email}</div>
-            <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px 16px',margin:'16px 0'}}>
+            <div style={{background:'var(--bg3)',border:`1px solid ${createdTempPwd.authOk?'var(--border)':'var(--amber)'}`,borderRadius:'var(--radius)',padding:'14px 16px',margin:'16px 0'}}>
               <div style={{fontSize:11,color:'var(--text3)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.05em'}}>Contraseña temporal generada</div>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <code style={{fontSize:18,fontWeight:700,color:'var(--amber)',letterSpacing:'2px',fontFamily:'var(--mono)',flexGrow:1}}>{createdTempPwd.pwd}</code>
                 <button className="btn btn-ghost btn-sm" onClick={()=>{try{navigator.clipboard.writeText(createdTempPwd.pwd);}catch(e){}}} title="Copiar">📋</button>
               </div>
             </div>
+            {!createdTempPwd.authOk&&(
+              <div className="alert alert-danger" style={{marginBottom:10}}>
+                <span>⚠ {createdTempPwd.authErrMsg||'Error al crear cuenta de acceso.'} El empleado está en BD pero no puede iniciar sesión hasta que un admin use "Editar → Nueva contraseña" para completar el acceso.</span>
+              </div>
+            )}
             <div style={{fontSize:12,color:'var(--text3)',lineHeight:1.6}}>
-              ⚠ Comunica esta contraseña al empleado de forma segura.<br/>
-              El empleado deberá cambiarla en su primer acceso desde <strong>Mi Perfil</strong>.
+              {createdTempPwd.authOk
+                ?<>✓ Cuenta de acceso creada. Comunica esta contraseña al empleado de forma segura.<br/>Deberá cambiarla desde <strong>Mi Perfil</strong> en su primer acceso.</>
+                :<>Guarda la contraseña por si necesitas completar el acceso manualmente.</>
+              }
             </div>
             <div style={{display:'flex',justifyContent:'flex-end',marginTop:16}}>
               <button className="btn btn-primary" onClick={()=>setCreatedTempPwd(null)}>Entendido</button>
