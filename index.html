@@ -1759,24 +1759,27 @@ function AdminView(){
     // Crear usuario en Supabase Auth via Edge Function
     let authOk=false,authErrMsg='',authRecovered=false;
     try{
-      const sessionRes=await sb.auth.getSession();
-      const session=sessionRes.data.session;
+      // Refrescar sesión antes del fetch para evitar JWT caducado (gateway responde 401)
+      let session=null;
+      try{session=(await sb.auth.refreshSession()).data.session;}catch(rErr){}
+      if(!session?.access_token)session=(await sb.auth.getSession()).data.session;
       if(!session?.access_token){
         authErrMsg='Sesión del administrador no válida. Vuelve a iniciar sesión.';
       }else{
         const authResp=await fetch(`${EF_URL}/manage-auth-user`,{
           method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'apikey':SUPABASE_KEY},
           body:JSON.stringify({action:'create',email:email.trim().toLowerCase(),password:tempPwd,full_name,role})
         });
-        let authData={};
-        try{authData=await authResp.json();}catch(jsonErr){authErrMsg=`Respuesta inválida del servidor Auth (HTTP ${authResp.status})`;}
+        let authData={},rawTxt='';
+        try{rawTxt=await authResp.text();authData=rawTxt?JSON.parse(rawTxt):{};}catch(jsonErr){authErrMsg=`Respuesta no-JSON del Auth (HTTP ${authResp.status}): ${rawTxt.substring(0,150)}`;}
         if(authData.auth_id){
           const{error:linkErr}=await sb.from('employees').update({auth_id:authData.auth_id}).eq('id',inserted.id);
           if(linkErr){authErrMsg='Cuenta creada pero no pudo vincularse al empleado: '+linkErr.message;}
           else{authOk=true;authRecovered=!!authData.recovered;}
         }else if(!authErrMsg){
-          authErrMsg=authData.error||`La cuenta de acceso no pudo crearse (HTTP ${authResp.status})`;
+          const m=authData.error||authData.message||authData.msg||`HTTP ${authResp.status}`;
+          authErrMsg=`La cuenta de acceso no pudo crearse: ${m}`;
         }
       }
     }catch(efErr){authErrMsg='Error de conexión con el servicio de autenticación: '+(efErr?.message||efErr);}
@@ -2127,16 +2130,20 @@ function AdminView(){
                     setDeleteErr(data?.error||error?.message||'Error al eliminar');
                     setDeleteLoading(false);return;
                   }
-                  // 2. Eliminar de Supabase Auth si tiene auth_id
+                  // 2. Eliminar de Supabase Auth si tiene auth_id (refresh session primero)
                   if(deletingEmp.auth_id){
                     try{
-                      const session=(await sb.auth.getSession()).data.session;
-                      await fetch(`${EF_URL}/manage-auth-user`,{
-                        method:'POST',
-                        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
-                        body:JSON.stringify({action:'delete',auth_id:deletingEmp.auth_id})
-                      });
-                    }catch(e){/* Auth delete failed — employee already removed from BD */}
+                      let session=null;
+                      try{session=(await sb.auth.refreshSession()).data.session;}catch(rErr){}
+                      if(!session?.access_token)session=(await sb.auth.getSession()).data.session;
+                      if(session?.access_token){
+                        await fetch(`${EF_URL}/manage-auth-user`,{
+                          method:'POST',
+                          headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'apikey':SUPABASE_KEY},
+                          body:JSON.stringify({action:'delete',auth_id:deletingEmp.auth_id})
+                        });
+                      }
+                    }catch(e){/* Auth delete failed — empleado ya eliminado de BD */}
                   }
                   // 3. Refrescar lista
                   const{data:fresh}=await sb.from('employees').select('*').order('full_name');
@@ -2220,8 +2227,16 @@ function AdminView(){
                 if(error){setPwdResetMsg('Error al guardar datos: '+error.message);setEmpSaving(false);return;}
                 if(newPwd){
                   try{
-                    const sessionRes=await sb.auth.getSession();
-                    const session=sessionRes.data.session;
+                    // Forzar refresh de sesión — el token puede haber caducado (EF rechaza JWT antiguo con 401)
+                    let session=null;
+                    try{
+                      const refreshRes=await sb.auth.refreshSession();
+                      session=refreshRes.data.session;
+                    }catch(rErr){/* refreshSession puede fallar si no hay refresh_token — caemos a getSession */}
+                    if(!session?.access_token){
+                      const sr=await sb.auth.getSession();
+                      session=sr.data.session;
+                    }
                     if(!session?.access_token){
                       setPwdResetMsg('Datos guardados. Sesión caducada — vuelve a iniciar sesión antes de asignar contraseña.');
                       setEmpSaving(false);setConfirmPwd('');return;
@@ -2231,15 +2246,22 @@ function AdminView(){
                       :{action:'create',email:(editingEmp.email||'').toLowerCase(),password:newPwd,full_name:editingEmp.full_name,role:editingEmp.role};
                     const r=await fetch(`${EF_URL}/manage-auth-user`,{
                       method:'POST',
-                      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+                      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'apikey':SUPABASE_KEY},
                       body:JSON.stringify(efBody)
                     });
-                    let rd={};
-                    try{rd=await r.json();}catch(jsonErr){rd={error:`Respuesta inválida (HTTP ${r.status})`};}
-                    if(rd.error){
-                      setPwdResetMsg('Datos guardados. Error al asignar contraseña: '+rd.error);
+                    // Parsear body — puede fallar si no es JSON
+                    let rd={},rawText='';
+                    try{rawText=await r.text();rd=rawText?JSON.parse(rawText):{};}catch(jsonErr){rd={error:`Respuesta no-JSON (HTTP ${r.status}): ${rawText.substring(0,200)}`};}
+                    // Normalizar mensaje de error de diferentes fuentes (EF propio / gateway Supabase)
+                    const errMsg=rd.error||rd.message||rd.msg||rd.error_description||null;
+                    if(!r.ok){
+                      // HTTP 4xx/5xx
+                      if(r.status===401){
+                        setPwdResetMsg('Datos guardados. Sesión caducada (HTTP 401). Cierra sesión y vuelve a entrar para asignar contraseña.');
+                      }else{
+                        setPwdResetMsg(`Datos guardados. Auth respondió HTTP ${r.status}: ${errMsg||'sin detalles'}`);
+                      }
                     }else if(rd.auth_id){
-                      // Guardar auth_id (nueva cuenta o recuperada de auth.users existente)
                       const{error:linkErr}=await sb.from('employees').update({auth_id:rd.auth_id}).eq('id',editingEmp.id);
                       if(linkErr){
                         setPwdResetMsg('Cuenta creada pero no pudo vincularse: '+linkErr.message);
@@ -2249,8 +2271,10 @@ function AdminView(){
                       }
                     }else if(rd.ok){
                       setPwdResetMsg('✓ Contraseña actualizada');
+                    }else if(errMsg){
+                      setPwdResetMsg('Datos guardados. Error: '+errMsg);
                     }else{
-                      setPwdResetMsg('Datos guardados pero respuesta inesperada del servicio de Auth');
+                      setPwdResetMsg(`Datos guardados. Respuesta vacía del servicio (HTTP ${r.status})`);
                     }
                   }catch(efErr){setPwdResetMsg('Datos guardados pero error de red con el servicio de Auth: '+(efErr?.message||efErr));}
                   setEmpSaving(false);
