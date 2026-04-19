@@ -3680,7 +3680,10 @@ function ResumenRRHH(){
       if(guardiaImp>0)result.push({emp,approver,tipo:'Guardia N2',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:guardiaImp,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:0,fecha:myWeeks.map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 semanal'});
       if(guardiaFestImp>0)result.push({emp,approver,tipo:'Guardia N2 Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:guardiaFestImp,comisiones:0,km:0,plusNoc:0,compFest:0,fecha:myWeeks.filter(w=>weekHasFestivo(w)).map(w=>'S'+w.wn).join(', '),desc:'Guardia N2 festivo'});
       if(plusNoc>0)result.push({emp,approver,tipo:'Plus NOC',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc,compFest:0,fecha:nDates.slice(0,4).join(', ')||'',desc:'Plus nocturnidad — '+plusNoc+' noches'});
-      if(compFest>0)result.push({emp,approver,tipo:'Complemento Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:compFest*40,fecha:mtFestDates.join(', ')||'',desc:'40€/día trabajado en festivo — '+compFest+' día(s)'});
+      // Complemento festivo: una fila por cada día trabajado en festivo (requisito RRHH)
+      mtFestDates.forEach(dateStr=>{
+        result.push({emp,approver,tipo:'Complemento Festivo',horasExtra:0,horasFestivos:0,horasExtraFM:0,horasFestFM:0,guardiasE:0,guardiasFE:0,comisiones:0,km:0,plusNoc:0,compFest:40,fecha:dateStr,desc:'40€ por día trabajado en festivo ('+dateStr+')'});
+      });
     });
     extraRows.filter(r=>r.month===selMonth).forEach(r=>result.push(r));
     return result;
