@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>CalN2 — Propuestas de diseño</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2435;--bg4:#252d42;
+  --border:#2a3350;--border2:#3a4566;
+  --text:#e8eaf2;--text2:#8892b0;--text3:#4a5578;
+  --blue:#4f8ef7;--blue2:#1e3a6e;--blue3:#0d1f3c;
+  --amber:#f7b84f;--orange:#fb923c;--orange3:#3d1a08;
+  --green:#4fc97a;--red:#f75f5f;--teal:#00d9b8;
+  --radius:10px;--radius-sm:6px;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;padding:32px}
+h2{font-size:18px;font-weight:600;margin-bottom:6px}
+.subtitle{font-size:13px;color:var(--text2);margin-bottom:28px}
+.option-label{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--blue2);color:var(--blue);
+  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;
+  padding:4px 12px;border-radius:20px;border:1px solid var(--blue);
+  margin-bottom:14px
+}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.card-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px}
+.divider{border:none;border-top:2px dashed var(--border2);margin:40px 0}
+.tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+
+/* ── OPCIÓN A — TABLA AGRUPADA POR MES ─────────────────────────────────── */
+.month-group{margin-bottom:0}
+.month-header{
+  display:grid;grid-template-columns:80px 140px 60px 1fr 90px;
+  gap:0;padding:8px 14px;
+  background:var(--bg4);border-top:1px solid var(--border);
+  font-size:10px;font-weight:600;color:var(--blue);text-transform:uppercase;
+  letter-spacing:.1em;align-items:center
+}
+.month-header:first-child{border-radius:var(--radius-sm) var(--radius-sm) 0 0}
+.month-header .month-summary{
+  display:flex;gap:12px;align-items:center;justify-content:flex-end;font-size:11px;
+  color:var(--text3);text-transform:none;letter-spacing:0;font-weight:400
+}
+.week-row{
+  display:grid;grid-template-columns:80px 140px 60px 1fr 90px;
+  gap:0;padding:8px 14px;
+  border-top:1px solid rgba(42,51,80,.3);align-items:center;
+  transition:background .1s;font-size:12px
+}
+.week-row:hover{background:var(--bg3)}
+.week-row.current{background:rgba(79,142,247,.07)}
+.wn{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.period{color:var(--text2)}
+.fest-cell{text-align:center}
+.assignee-cell{display:flex;gap:6px}
+.btn-person{
+  padding:3px 10px;border-radius:5px;border:1px solid;
+  font-size:11px;cursor:pointer;font-family:var(--font);
+  transition:all .12s
+}
+.btn-active{border-color:var(--orange);background:var(--orange3);color:var(--orange);font-weight:600}
+.btn-inactive{border-color:var(--border);background:var(--bg3);color:var(--text2)}
+.importe-cell{text-align:right;font-family:var(--mono);font-size:12px;color:var(--text2)}
+.importe-fest{color:var(--amber)}
+.pill-cur{background:var(--blue2);color:var(--blue);font-size:9px;padding:1px 6px;border-radius:10px;margin-left:4px}
+
+/* ── OPCIÓN B — GANTT TIMELINE ─────────────────────────────────────────── */
+.gantt-wrap{overflow-x:auto}
+.gantt-table{min-width:900px;border-collapse:separate;border-spacing:0}
+.gantt-label{font-size:12px;font-weight:500;white-space:nowrap;padding:6px 14px 6px 0;min-width:140px;vertical-align:middle}
+.gantt-month-header{
+  font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--text3);text-align:center;padding:4px 2px;
+  border-bottom:1px solid var(--border);background:var(--bg4)
+}
+.gantt-cell{
+  width:14px;height:28px;border-right:1px solid rgba(42,51,80,.15);
+  vertical-align:middle;position:relative
+}
+.gantt-block{
+  position:absolute;inset:3px 1px;border-radius:2px;
+  display:flex;align-items:center;justify-content:center
+}
+.gantt-block-S{background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)}
+.gantt-block-A{background:rgba(251,146,60,.25);border:1px solid rgba(251,146,60,.5)}
+.gantt-block-Ar{background:rgba(0,217,184,.2);border:1px solid rgba(0,217,184,.4)}
+.gantt-cell.cur-week{background:rgba(79,142,247,.08)!important}
+.gantt-cell.fest-week{background:rgba(247,184,79,.07)!important}
+.gantt-legend{display:flex;gap:16px;margin-top:12px;flex-wrap:wrap}
+.gantt-leg-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
+.gantt-leg-dot{width:10px;height:10px;border-radius:2px}
+.gantt-stat-row td{padding:3px 0;font-size:11px;color:var(--text3);vertical-align:middle}
+.gantt-stat-bar{display:inline-block;height:4px;border-radius:2px;vertical-align:middle;margin-right:6px}
+/* month separator in gantt */
+.gantt-cell.month-start{border-left:2px solid var(--border2)!important}
+</style>
+</head>
+<body>
+
+<h2>CalN2 — Propuestas de diseño de la lista</h2>
+<p class="subtitle">Comparativa visual de las dos opciones para el listado de semanas</p>
+
+<!-- ═══════════════════════════════════════════════════════ OPCIÓN A -->
+<div class="option-label">Opción A — Tabla agrupada por mes</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <!-- ENERO -->
+  <div class="month-header">
+    <span>Enero 2026</span>
+    <span></span>
+    <span style="text-align:center">Fest.</span>
+    <span></span>
+    <div class="month-summary">
+      4 sem. &nbsp;·&nbsp; S:2 A:2 &nbsp;·&nbsp; <span style="color:var(--amber)">1 fest.</span>
+    </div>
+  </div>
+
+  <div class="week-row current">
+    <span class="wn">S01 <span class="pill-cur">actual</span></span>
+    <span class="period" style="color:var(--text2)">5 ene – 11 ene</span>
+    <span class="fest-cell" style="color:var(--amber)">⚡</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-active">Sergio</button>
+      <button class="btn-person btn-inactive">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell importe-fest">290€ <span style="font-size:10px">(+fest)</span></span>
+  </div>
+  <div class="week-row">
+    <span class="wn">S02</span>
+    <span class="period">12 ene – 18 ene</span>
+    <span class="fest-cell" style="color:var(--text3)">–</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-inactive">Sergio</button>
+      <button class="btn-person btn-active">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell">250€</span>
+  </div>
+  <div class="week-row">
+    <span class="wn">S03</span>
+    <span class="period">19 ene – 25 ene</span>
+    <span class="fest-cell" style="color:var(--text3)">–</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-active">Sergio</button>
+      <button class="btn-person btn-inactive">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell">250€</span>
+  </div>
+  <div class="week-row">
+    <span class="wn">S04</span>
+    <span class="period">26 ene – 1 feb</span>
+    <span class="fest-cell" style="color:var(--text3)">–</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-inactive">Sergio</button>
+      <button class="btn-person btn-active">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell">250€</span>
+  </div>
+
+  <!-- FEBRERO -->
+  <div class="month-header" style="border-radius:0">
+    <span>Febrero 2026</span>
+    <span></span>
+    <span style="text-align:center">Fest.</span>
+    <span></span>
+    <div class="month-summary">4 sem. &nbsp;·&nbsp; S:2 A:2 &nbsp;·&nbsp; <span style="color:var(--text3)">0 fest.</span></div>
+  </div>
+  <div class="week-row">
+    <span class="wn">S05</span>
+    <span class="period">2 feb – 8 feb</span>
+    <span class="fest-cell" style="color:var(--text3)">–</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-active">Sergio</button>
+      <button class="btn-person btn-inactive">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell">250€</span>
+  </div>
+  <div class="week-row">
+    <span class="wn">S06</span>
+    <span class="period">9 feb – 15 feb</span>
+    <span class="fest-cell" style="color:var(--text3)">–</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-inactive">Sergio</button>
+      <button class="btn-person btn-active">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell">250€</span>
+  </div>
+  <div class="week-row" style="opacity:.5">
+    <span class="wn" style="font-style:italic;color:var(--text3)">... 2 semanas más</span>
+    <span></span><span></span><span></span><span></span>
+  </div>
+
+  <!-- DICIEMBRE collapsed -->
+  <div class="month-header" style="opacity:.55">
+    <span>Diciembre 2026</span>
+    <span></span>
+    <span style="text-align:center">Fest.</span>
+    <span></span>
+    <div class="month-summary">4 sem. &nbsp;·&nbsp; S:2 A:2 Ar:0 &nbsp;·&nbsp; <span style="color:var(--amber)">2 fest.</span></div>
+  </div>
+  <div class="week-row" style="opacity:.55">
+    <span class="wn">S49</span>
+    <span class="period">30 nov – 6 dic</span>
+    <span class="fest-cell" style="color:var(--text3)">–</span>
+    <div class="assignee-cell">
+      <button class="btn-person btn-inactive">Sergio</button>
+      <button class="btn-person btn-active">Alberto</button>
+      <button class="btn-person btn-inactive">Arturo</button>
+    </div>
+    <span class="importe-cell">250€</span>
+  </div>
+  <div class="week-row" style="opacity:.55;border-radius:0 0 var(--radius) var(--radius)">
+    <span class="wn" style="font-style:italic;color:var(--text3)">... 3 semanas más</span>
+    <span></span><span></span><span></span><span></span>
+  </div>
+</div>
+
+<div style="margin-top:10px;font-size:11px;color:var(--text3)">
+  ↳ Los meses se muestran separados con cabecera de resumen (totales parciales por persona y festivos del mes). La semana actual siempre resaltada.
+</div>
+
+<hr class="divider">
+
+<!-- ═══════════════════════════════════════════════════════ OPCIÓN B -->
+<div class="option-label" style="background:rgba(0,217,184,.1);color:var(--teal);border-color:var(--teal)">Opción B — Vista Gantt / timeline</div>
+
+<div class="card">
+  <div class="card-title">Distribución anual de guardias N2 · 2026</div>
+
+  <div class="gantt-wrap">
+    <table class="gantt-table">
+      <thead>
+        <tr>
+          <td style="padding:0"></td>
+          <!-- Month headers spanning their weeks -->
+          <td class="gantt-month-header" colspan="4">ENE</td>
+          <td class="gantt-month-header" colspan="4">FEB</td>
+          <td class="gantt-month-header" colspan="4">MAR</td>
+          <td class="gantt-month-header" colspan="4">ABR</td>
+          <td class="gantt-month-header" colspan="4">MAY</td>
+          <td class="gantt-month-header" colspan="4">JUN</td>
+          <td class="gantt-month-header" colspan="5">JUL</td>
+          <td class="gantt-month-header" colspan="4">AGO</td>
+          <td class="gantt-month-header" colspan="4">SEP</td>
+          <td class="gantt-month-header" colspan="4">OCT</td>
+          <td class="gantt-month-header" colspan="4">NOV</td>
+          <td class="gantt-month-header" colspan="4">DIC</td>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- SERGIO row -->
+        <tr>
+          <td class="gantt-label">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(79,142,247,.4);border:1px solid rgba(79,142,247,.7);margin-right:6px;vertical-align:middle"></span>
+            Sergio
+          </td>
+          <!-- S01 fest -->
+          <td class="gantt-cell fest-week cur-week">
+            <div class="gantt-block gantt-block-S"></div>
+          </td>
+          <!-- S02 -->
+          <td class="gantt-cell"><div style="position:absolute;inset:3px 1px"></div></td>
+          <!-- S03 -->
+          <td class="gantt-cell cur-week"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;"></div></td>
+          <!-- S04 -->
+          <td class="gantt-cell month-start"></td>
+          <!-- Feb: S05 -->
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell month-start"></td>
+          <!-- Mar -->
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell month-start"></td>
+          <!-- Abr -->
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell month-start"></td>
+          <!-- Mayo -->
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td>
+          <!-- Jun -->
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell month-start"></td>
+          <!-- Jul -->
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell month-start"></td>
+          <!-- Ago-Dic abreviado -->
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell month-start"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-S" style="inset:3px 1px;position:absolute;border-radius:2px;background:rgba(79,142,247,.25);border:1px solid rgba(79,142,247,.5)"></div></td>
+        </tr>
+
+        <!-- Stats Sergio -->
+        <tr>
+          <td></td>
+          <td colspan="52" style="padding:2px 0 10px 0">
+            <div style="display:flex;gap:16px;font-size:11px;color:var(--text3);padding:0 2px">
+              <span><span class="gantt-stat-bar" style="width:60px;background:rgba(79,142,247,.5)"></span>26 guardias</span>
+              <span style="color:var(--amber)">⚡ 8 con festivo</span>
+              <span style="color:var(--text2);font-weight:500">6.820€</span>
+            </div>
+          </td>
+        </tr>
+
+        <!-- ALBERTO row -->
+        <tr>
+          <td class="gantt-label">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(251,146,60,.35);border:1px solid rgba(251,146,60,.6);margin-right:6px;vertical-align:middle"></span>
+            Alberto
+          </td>
+          <td class="gantt-cell fest-week"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"><div class="gantt-block gantt-block-A" style="inset:3px 1px;position:absolute;"></div></td>
+          <td class="gantt-cell"></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td colspan="52" style="padding:2px 0 10px 0">
+            <div style="display:flex;gap:16px;font-size:11px;color:var(--text3);padding:0 2px">
+              <span><span class="gantt-stat-bar" style="width:60px;background:rgba(251,146,60,.6)"></span>26 guardias</span>
+              <span style="color:var(--amber)">⚡ 2 con festivo</span>
+              <span style="color:var(--text2);font-weight:500">6.580€</span>
+            </div>
+          </td>
+        </tr>
+
+        <!-- ARTURO row -->
+        <tr>
+          <td class="gantt-label">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(0,217,184,.2);border:1px solid rgba(0,217,184,.5);margin-right:6px;vertical-align:middle"></span>
+            Arturo
+          </td>
+          <!-- Sin guardias aún — solo placeholders vacíos -->
+          <td class="gantt-cell fest-week"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell"></td><td class="gantt-cell"></td>
+          <td class="gantt-cell month-start"></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td colspan="52" style="padding:2px 0 4px 0">
+            <div style="display:flex;gap:16px;font-size:11px;color:var(--text3);padding:0 2px">
+              <span><span class="gantt-stat-bar" style="width:0px;background:rgba(0,217,184,.5)"></span>0 guardias asignadas aún</span>
+              <span style="color:var(--text3)">0€</span>
+            </div>
+          </td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <div class="gantt-legend" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+    <div class="gantt-leg-item">
+      <div class="gantt-leg-dot" style="background:rgba(79,142,247,.4);border:1px solid rgba(79,142,247,.7)"></div>
+      <span>Sergio</span>
+    </div>
+    <div class="gantt-leg-item">
+      <div class="gantt-leg-dot" style="background:rgba(251,146,60,.35);border:1px solid rgba(251,146,60,.6)"></div>
+      <span>Alberto</span>
+    </div>
+    <div class="gantt-leg-item">
+      <div class="gantt-leg-dot" style="background:rgba(0,217,184,.2);border:1px solid rgba(0,217,184,.5)"></div>
+      <span>Arturo</span>
+    </div>
+    <div class="gantt-leg-item">
+      <div class="gantt-leg-dot" style="background:rgba(247,184,79,.15);border:1px solid rgba(247,184,79,.4)"></div>
+      <span style="color:var(--amber)">⚡ Semana con festivo</span>
+    </div>
+    <div class="gantt-leg-item">
+      <div class="gantt-leg-dot" style="background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3)"></div>
+      <span style="color:var(--blue)">Semana actual</span>
+    </div>
+    <div style="margin-left:auto;font-size:11px;color:var(--text3)">
+      Haz clic en cualquier celda para reasignar esa semana
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:10px;font-size:11px;color:var(--text3)">
+  ↳ Vista de todo el año de un vistazo. Cada bloque = una semana asignada. Clic en una celda para cambiar la asignación directamente sin botones.
+</div>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "noc-turnos",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "7891", "--directory", "C:\\Users\\ssantos\\Turnos_NOC\\noc-turnos-avatel"],
+      "port": 7891
+    },
+    {
+      "name": "mockup",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "7890"],
+      "port": 7890
+    }
+  ]
+}

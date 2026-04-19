@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NOC Turnos — Avatel</title>
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
@@ -303,6 +303,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const EF_URL = `${SUPABASE_URL}/functions/v1`; // Edge Functions base URL
 
+// Año operativo. Hasta aquí estaba hardcodeado a 2026 en +8 sitios; se actualiza al cambiar de ejercicio.
+// Para forzar otro año en pruebas: localStorage.setItem('noc_year','2027')
+const CURRENT_YEAR = Number(localStorage.getItem('noc_year')) || 2026;
+
 // Helper para llamar al EF manage-auth-user con sesión refrescada y errores normalizados
 // Devuelve siempre { ok:boolean, data?:object, error?:string, status?:number }
 async function callManageAuth(body) {
@@ -445,7 +449,7 @@ async function insertRule(rule) {
 async function fetchN2Assignments() {
   const { data } = await sb.from('n2_assignments')
     .select('week_number, has_festivo, importe_base, importe_festivo, employee:employee_id(short_name, full_name)')
-    .eq('year', 2026)
+    .eq('year', CURRENT_YEAR)
     .order('week_number');
   return data || [];
 }
@@ -460,7 +464,7 @@ async function saveN2Assignment(weekNumber, employeeShortName) {
   if (!emp) throw new Error(`Empleado "${employeeShortName}" no encontrado en BD`);
   // Upsert para evitar fallos silenciosos cuando la fila no existe todavía
   const { error } = await sb.from('n2_assignments')
-    .upsert({ week_number: weekNumber, year: 2026, employee_id: emp.id }, { onConflict: 'week_number,year' });
+    .upsert({ week_number: weekNumber, year: CURRENT_YEAR, employee_id: emp.id }, { onConflict: 'week_number,year' });
   if (error) throw new Error(error.message);
 }
 
@@ -509,7 +513,7 @@ async function runDiagnostics() {
 async function fetchVacationBalance(employeeId) {
   const { data } = await sb.from('vacation_balance')
     .select('days_total, days_used, days_remaining')
-    .eq('employee_id', employeeId).eq('year', 2026).single();
+    .eq('employee_id', employeeId).eq('year', CURRENT_YEAR).single();
   return data;
 }
 
@@ -521,7 +525,7 @@ async function deductVacationDays(employeeId, days) {
   if (newUsed > bal.days_total) return { error: `Saldo insuficiente (${bal.days_remaining} días disponibles)` };
   const { error } = await sb.from('vacation_balance')
     .update({ days_used: newUsed })
-    .eq('employee_id', employeeId).eq('year', 2026);
+    .eq('employee_id', employeeId).eq('year', CURRENT_YEAR);
   return { error, newRemaining: bal.days_total - newUsed };
 }
 
@@ -1229,7 +1233,7 @@ function TeamView(){
 
   // Carga saldo de vacaciones desde BD — se refresca cuando vacVer cambia
   useEffect(()=>{
-    sb.from('vacation_balance').select('days_remaining,days_used,employee:employee_id(short_name)').eq('year',2026).then(({data})=>{
+    sb.from('vacation_balance').select('days_remaining,days_used,employee:employee_id(short_name)').eq('year',CURRENT_YEAR).then(({data})=>{
       if(!data)return;
       const map={};
       data.forEach(r=>{if(r.employee?.short_name)map[r.employee.short_name]={remaining:r.days_remaining,used:r.days_used};});
@@ -1467,17 +1471,14 @@ function RequestsView(){
       for(const day of days){
         await sb.from('shifts').upsert({employee_id:empId,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});
       }
-      const {data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',empId).eq('year',2026).single();
-      if(bal) await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',empId).eq('year',2026);
+      // Incremento relativo — evita race conditions
+      const vYear=new Date(r.vacation_start+'T12:00:00').getFullYear();
+      await sb.rpc('adjust_vacation_balance',{p_employee_id:empId,p_year:vYear,p_delta:days.length});
       [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
     } else if(r.type==='cambio' && empId && r.requester_date && r.target_date && r.target_id){
-      const {data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',r.requester_date).maybeSingle();
-      const {data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',r.target_id).eq('shift_date',r.target_date).maybeSingle();
-      if(s1?.id) await sb.from('shifts').delete().eq('id',s1.id);
-      if(s2?.id) await sb.from('shifts').delete().eq('id',s2.id);
-      if(s2?.shift_type) await sb.from('shifts').upsert({employee_id:empId,shift_date:r.target_date,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
-      if(s1?.shift_type) await sb.from('shifts').upsert({employee_id:r.target_id,shift_date:r.requester_date,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
+      // Swap atómico via RPC — evita estados inconsistentes si falla a medio proceso
+      await sb.rpc('apply_swap_pair',{p_req_emp:empId,p_req_date:r.requester_date,p_tgt_emp:r.target_id,p_tgt_date:r.target_date});
       [r.requester_date?.substring(0,7),r.target_date?.substring(0,7)].filter(Boolean).forEach(mk=>{delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
     } else if(r.type==='asuntos' && empId && r.requester_date){
@@ -1660,16 +1661,12 @@ function HistorialView(){
     fetchRequestHistory(100).then(({data})=>{setHist(data);setLoading(false);});
   },[open]);
 
-  // Revierte un único swap (un par requester_date ↔ target_date) a su estado previo
+  // Revierte un único swap de forma atómica via RPC — el anterior read-delete-upsert x4 dejaba
+  // estados inconsistentes si fallaba a medio camino
   const revertSwap=async(req)=>{
     const empId=req.requester_id;
     if(!empId||!req.target_id||!req.requester_date||!req.target_date)return;
-    const {data:cur1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',empId).eq('shift_date',req.target_date).maybeSingle();
-    const {data:cur2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',req.target_id).eq('shift_date',req.requester_date).maybeSingle();
-    if(cur1?.id)await sb.from('shifts').delete().eq('id',cur1.id);
-    if(cur2?.id)await sb.from('shifts').delete().eq('id',cur2.id);
-    if(cur2?.shift_type)await sb.from('shifts').upsert({employee_id:empId,shift_date:req.requester_date,shift_type:cur2.shift_type},{onConflict:'employee_id,shift_date'});
-    if(cur1?.shift_type)await sb.from('shifts').upsert({employee_id:req.target_id,shift_date:req.target_date,shift_type:cur1.shift_type},{onConflict:'employee_id,shift_date'});
+    await sb.rpc('revert_swap_pair',{p_req_emp:empId,p_req_date:req.requester_date,p_tgt_emp:req.target_id,p_tgt_date:req.target_date});
   };
 
   const cancelRequest=async(h)=>{
@@ -1709,8 +1706,9 @@ function HistorialView(){
       for(const day of days){
         await sb.from('shifts').delete().eq('employee_id',empId).eq('shift_date',day).eq('shift_type','V');
       }
-      const {data:bal}=await sb.from('vacation_balance').select('days_used').eq('employee_id',empId).eq('year',2026).single();
-      if(bal){await sb.from('vacation_balance').update({days_used:Math.max(0,bal.days_used-days.length)}).eq('employee_id',empId).eq('year',2026);}
+      // Decremento relativo via RPC — evita race conditions
+      const vYear=new Date(req.vacation_start+'T12:00:00').getFullYear();
+      await sb.rpc('adjust_vacation_balance',{p_employee_id:empId,p_year:vYear,p_delta:-days.length});
       [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
       window.__calendarVersion=(window.__calendarVersion||0)+1;
 
@@ -1875,7 +1873,7 @@ function AdminView({currentUser}){
     }
     // Auto-crear saldo de vacaciones para operadores nuevos
     if(role==='operator'&&inserted?.id){
-      await sb.from('vacation_balance').insert({employee_id:inserted.id,year:2026});
+      await sb.from('vacation_balance').insert({employee_id:inserted.id,year:CURRENT_YEAR});
     }
     // Refrescar lista — conservar estado previo si el fetch falla (evita que el listado se vacíe)
     const{data:fresh,error:fetchErr}=await sb.from('employees').select('*').order('full_name');
@@ -3005,7 +3003,7 @@ function OpRequestModal({modal,userId,userName,onClose,onSaved}){
       await sb.from('shift_requests').insert({request_type:'personal_day',requester_id:userId,requester_date:form.date1,status:'pending',notes:form.reason||null});
     }else{
       reqType='vacation';
-      await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:2026,status:'pending',notes:form.reason||null});
+      await sb.from('shift_requests').insert({request_type:'vacation',requester_id:userId,vacation_start:form.date1,vacation_end:form.date2,vacation_year:CURRENT_YEAR,status:'pending',notes:form.reason||null});
     }
     await logAudit('request_created',{request_type:reqType,user:userName},userId);
     setSaving(false);onSaved();
@@ -3845,16 +3843,12 @@ function AdminReqItem({r,currentUserId,onResolved}){
   const tagLabel=r.type==='cambio'?(r.isGroup?`Cambio turno · ${r.pairs.length} días`:'Cambio turno'):r.type==='asuntos'?'Asuntos propios':'Vacaciones';
 
   // Aplica un swap individual (1 par) — reutiliza la lógica anterior
+  // Aplica un swap de forma atómica (SQL function transaccional) — evita estados inconsistentes
   const applySwap=async(reqEmpId,tgtEmpId,reqDate,tgtDate)=>{
-    const{data:s1}=await sb.from('shifts').select('shift_type,id').eq('employee_id',reqEmpId).eq('shift_date',reqDate).maybeSingle();
-    const{data:s2}=await sb.from('shifts').select('shift_type,id').eq('employee_id',tgtEmpId).eq('shift_date',tgtDate).maybeSingle();
-    // Validación: ambos deben tener turno de trabajo (M/T/N/D), nunca libre/vacaciones/asuntos
-    if(!isWorkShift(s1?.shift_type))return`${reqDate}: el solicitante no tiene turno de trabajo asignado (${s1?.shift_type||'libre'})`;
-    if(!isWorkShift(s2?.shift_type))return`${tgtDate}: el compañero no tiene turno de trabajo asignado (${s2?.shift_type||'libre'})`;
-    if(s1.id)await sb.from('shifts').delete().eq('id',s1.id);
-    if(s2.id)await sb.from('shifts').delete().eq('id',s2.id);
-    await sb.from('shifts').upsert({employee_id:reqEmpId,shift_date:tgtDate,shift_type:s2.shift_type},{onConflict:'employee_id,shift_date'});
-    await sb.from('shifts').upsert({employee_id:tgtEmpId,shift_date:reqDate,shift_type:s1.shift_type},{onConflict:'employee_id,shift_date'});
+    const{data,error}=await sb.rpc('apply_swap_pair',{p_req_emp:reqEmpId,p_req_date:reqDate,p_tgt_emp:tgtEmpId,p_tgt_date:tgtDate});
+    if(error)return`Error SQL: ${error.message}`;
+    const row=data?.[0];
+    if(!row?.ok)return row?.error||'Error desconocido al aplicar el cambio';
     return null;
   };
 
@@ -3887,8 +3881,9 @@ function AdminReqItem({r,currentUserId,onResolved}){
         const days=[];let cur=r.vacation_start;
         while(cur<=r.vacation_end){days.push(cur);const dd=new Date(cur+'T12:00:00');dd.setDate(dd.getDate()+1);cur=dd.toISOString().split('T')[0];}
         for(const day of days){await sb.from('shifts').upsert({employee_id:r.requester_id,shift_date:day,shift_type:'V'},{onConflict:'employee_id,shift_date'});}
-        const{data:bal}=await sb.from('vacation_balance').select('days_used,days_total').eq('employee_id',r.requester_id).eq('year',2026).single();
-        if(bal)await sb.from('vacation_balance').update({days_used:bal.days_used+days.length}).eq('employee_id',r.requester_id).eq('year',2026);
+        // Incremento relativo del saldo de vacaciones — evita race conditions entre aprobadores
+        const vYear=new Date(r.vacation_start+'T12:00:00').getFullYear();
+        await sb.rpc('adjust_vacation_balance',{p_employee_id:r.requester_id,p_year:vYear,p_delta:days.length});
         [...new Set(days.map(d=>d.substring(0,7)))].forEach(mk=>{delete shiftsCache[mk];});
         window.__calendarVersion=(window.__calendarVersion||0)+1;
         await sb.from('shift_requests').update({status:'approved',approved_by:currentUserId,resolved_at:new Date().toISOString()}).eq('id',r.id);

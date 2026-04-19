@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Mockup — Cobertura M/T/N</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2435;--bg4:#252d42;
+  --border:#2a3350;--border2:#3a4566;
+  --text:#e8eaf2;--text2:#8892b0;--text3:#4a5578;
+  --blue:#4f8ef7;--blue2:#1e3a6e;--blue3:#0d1f3c;
+  --teal:#00d9b8;--amber:#f7b84f;
+  --red:#f75f5f;--red2:#5c1f1f;
+  --green:#4fc97a;--green2:#1a4d2e;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+  --radius:8px;--radius-sm:5px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;overflow:hidden}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:4px;padding:12px 16px 0;background:var(--bg)}
+.tab{padding:7px 16px;border-radius:6px 6px 0 0;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-bottom:none;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--bg2);color:var(--blue);border-color:var(--border2)}
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:9px;font-weight:700;margin-left:6px;background:var(--blue2);color:var(--blue)}
+.tab.active .tab-badge{background:var(--blue);color:#fff}
+
+/* ── PANEL ── */
+.panels{background:var(--bg2);border:1px solid var(--border2);margin:0 16px;border-radius:0 8px 8px 8px;overflow:hidden}
+.panel{display:none;padding:16px}
+.panel.active{display:block}
+.panel-desc{font-size:11px;color:var(--text2);margin-bottom:12px;padding:8px 12px;background:var(--bg3);border-radius:var(--radius-sm);border-left:3px solid var(--border2)}
+
+/* ── TABLA ── */
+.cal{width:100%;border-collapse:separate;border-spacing:0}
+.cal th{background:var(--bg3);color:var(--text3);font-size:9px;font-weight:500;padding:4px 2px;text-align:center;border-bottom:1px solid var(--border);min-width:30px}
+.cal th.nc{text-align:left;min-width:100px;padding-left:8px}
+.cal td{padding:2px 2px;text-align:center;border-bottom:1px solid rgba(42,51,80,.3)}
+.cal td.nc{text-align:left;background:var(--bg2);padding:2px 8px;white-space:nowrap;font-size:12px}
+.cal tr:hover td,.cal tr:hover td.nc{background:var(--bg3)}
+.th-we{background:#182240!important;color:#7eb8f7!important}
+.th-hoy{background:var(--blue3)!important;color:var(--blue)!important;border-bottom:2px solid var(--blue)!important}
+.td-we{background:rgba(79,142,247,.07)!important}
+.td-hoy{background:rgba(79,142,247,.1)!important}
+
+/* ── BADGES ── */
+.b{display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:500;border-radius:3px;min-width:18px;height:18px;padding:0 3px}
+.bM{background:#1a3a6e;color:#7eb8f7}.bT{background:#3d2a1a;color:#f7b84f}
+.bN{background:#2a1a4a;color:#c084fc}.bV{background:#1a3d2a;color:#4fc97a}
+
+/* ── COV ACTUAL (7px) ── */
+.ca-cell{display:flex;flex-direction:column;align-items:center;gap:0;padding:2px 0;border-radius:2px}
+.ca-ok{background:rgba(79,201,122,.1)}.ca-bad{background:rgba(247,95,95,.08)}
+.ca-t{font-size:7px;font-family:var(--mono);font-weight:600;line-height:1.4}
+
+/* ── COV A: puntos 9px ── */
+.ca2-cell{display:flex;flex-direction:column;align-items:center;gap:1px;padding:3px 1px}
+.ca2-row{display:flex;align-items:center;gap:2px;font-size:9px;font-family:var(--mono);font-weight:600;line-height:1.3}
+.dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.tok{color:var(--green)}.tbad{color:var(--red)}.twarn{color:var(--amber)}
+.dok{background:var(--green)}.dbad{background:var(--red)}.dwarn{background:var(--amber)}
+
+/* ── COV B: mini-barras ── */
+.cb-cell{display:flex;flex-direction:column;gap:2px;padding:4px 3px}
+.cb-row{display:flex;align-items:center;gap:2px}
+.cb-lbl{font-size:7px;font-family:var(--mono);color:var(--text3);width:7px;text-align:right;flex-shrink:0}
+.cb-track{flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;min-width:12px}
+.cb-fill{height:100%;border-radius:2px}
+.fok{background:var(--teal)}.fwarn{background:var(--amber)}.fbad{background:var(--red)}
+
+/* ── COV C: panel independiente ── */
+.cov-panel{margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.cov-panel-hdr{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border-bottom:1px solid var(--border)}
+.cov-panel-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.cov-legend{display:flex;gap:10px;margin-left:auto}
+.cov-leg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text2)}
+.cov-leg-dot{width:7px;height:7px;border-radius:50%}
+
+.cov-grid{display:grid;grid-template-columns:88px repeat(14,1fr)}
+.cov-row-lbl{display:flex;align-items:center;padding:0 12px;font-size:11px;font-weight:600;color:var(--text2);border-right:1px solid var(--border);height:32px;gap:6px}
+.cov-row-lbl small{font-size:9px;color:var(--text3);font-family:var(--mono)}
+.cov-cell{display:flex;align-items:center;justify-content:center;height:32px;border-right:1px solid rgba(42,51,80,.2);border-bottom:1px solid rgba(42,51,80,.2)}
+.cov-cell:last-child{border-right:none}
+.cpill{font-size:9px;font-family:var(--mono);font-weight:600;padding:1px 5px;border-radius:3px}
+.pok{background:rgba(79,201,122,.12);color:var(--green)}
+.pbad{background:rgba(247,95,95,.12);color:var(--red)}
+.pwarn{background:rgba(247,184,79,.12);color:var(--amber)}
+.cov-hdr-row{display:contents}
+.cov-hdr-cell{display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--text3);height:22px;border-right:1px solid rgba(42,51,80,.2);border-bottom:1px solid var(--border);flex-direction:column;gap:1px}
+.cov-hdr-cell.we{color:#7eb8f7;background:rgba(79,142,247,.04)}
+.cov-hdr-cell.hoy{color:var(--blue);background:rgba(79,142,247,.08)}
+.cov-spacer{border-right:1px solid var(--border);border-bottom:1px solid var(--border);height:22px;display:flex;align-items:center;padding:0 8px;font-size:8px;color:var(--text3)}
+.cov-cell.we{background:rgba(79,142,247,.04)}
+.cov-cell.hoy{background:rgba(79,142,247,.08)}
+.last-row .cov-cell{border-bottom:none}
+.last-row .cov-row-lbl{border-bottom:none}
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="show(0)">Estado actual <span class="tab-badge">Hoy</span></div>
+  <div class="tab" onclick="show(1)">Opción A — Puntos + fracción</div>
+  <div class="tab" onclick="show(2)">Opción B — Mini-barras</div>
+  <div class="tab" onclick="show(3)">Opción C — Panel independiente ⭐</div>
+</div>
+
+<div class="panels">
+
+  <!-- ═══════ ACTUAL ═══════ -->
+  <div class="panel active" id="p0">
+    <p class="panel-desc">⚠ Estado actual — fuente 7px, prácticamente ilegible en la fila de cobertura.</p>
+    <table class="cal">
+      <thead>
+        <tr>
+          <th class="nc">Operador</th>
+          <th>1<br>J</th><th>2<br>V</th><th class="th-we">3<br>S</th><th class="th-we">4<br>D</th>
+          <th class="th-hoy">5<br>L</th><th>6<br>M</th><th>7<br>X</th><th>8<br>J</th><th>9<br>V</th>
+          <th class="th-we">10<br>S</th><th class="th-we">11<br>D</th><th>12<br>L</th><th>13<br>M</th><th>14<br>X</th>
+        </tr>
+        <tr style="background:var(--bg4)">
+          <td class="nc" style="font-size:10px;color:var(--text3)">Cob. M/T/N</td>
+          <td><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">3/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-bad"><span class="ca-t" style="color:var(--red)">2/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td class="td-we"><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td class="td-we"><div class="ca-cell ca-bad"><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--red)">1/2</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td class="td-hoy"><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-bad"><span class="ca-t" style="color:var(--red)">3/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td class="td-we"><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td class="td-we"><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--green)">2/2</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-bad"><span class="ca-t" style="color:var(--red)">3/4</span><span class="ca-t" style="color:var(--red)">3/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+          <td><div class="ca-cell ca-ok"><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">4/4</span><span class="ca-t" style="color:var(--green)">2/2</span></div></td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="nc">Hector Lamus</td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"><span class="b bV">V</span></td><td class="td-we"></td><td class="td-hoy"><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"></td><td class="td-we"></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td></tr>
+        <tr><td class="nc">Mario Saavedra</td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-hoy"><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td></tr>
+        <tr><td class="nc">Ruben Culebras</td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-hoy"><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bT">T</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════ OPCIÓN A ═══════ -->
+  <div class="panel" id="p1">
+    <p class="panel-desc">✔ Misma fila, dentro de la tabla. Puntos de color + fracción en 9px. Legible sin cambiar la estructura del calendario.</p>
+    <table class="cal">
+      <thead>
+        <tr>
+          <th class="nc">Operador</th>
+          <th>1<br>J</th><th>2<br>V</th><th class="th-we">3<br>S</th><th class="th-we">4<br>D</th>
+          <th class="th-hoy">5<br>L</th><th>6<br>M</th><th>7<br>X</th><th>8<br>J</th><th>9<br>V</th>
+          <th class="th-we">10<br>S</th><th class="th-we">11<br>D</th><th>12<br>L</th><th>13<br>M</th><th>14<br>X</th>
+        </tr>
+        <tr style="background:var(--bg4)">
+          <td class="nc" style="font-size:10px;color:var(--text3);font-weight:600">Cobertura M/T/N</td>
+          <td><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>3/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tbad"><span class="dot dbad"></span>2/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td class="td-we"><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td class="td-we"><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tbad"><span class="dot dbad"></span>1/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td class="td-hoy"><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row twarn"><span class="dot dwarn"></span>3/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td class="td-we"><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td class="td-we"><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tbad"><span class="dot dbad"></span>3/4</div><div class="ca2-row tbad"><span class="dot dbad"></span>3/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+          <td><div class="ca2-cell"><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>4/4</div><div class="ca2-row tok"><span class="dot dok"></span>2/2</div></div></td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="nc">Hector Lamus</td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"><span class="b bV">V</span></td><td class="td-we"></td><td class="td-hoy"><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"></td><td class="td-we"></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td></tr>
+        <tr><td class="nc">Mario Saavedra</td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-hoy"><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td></tr>
+        <tr><td class="nc">Ruben Culebras</td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-hoy"><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bT">T</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════ OPCIÓN B ═══════ -->
+  <div class="panel" id="p2">
+    <p class="panel-desc">✔ Misma fila, dentro de la tabla. Mini-barras de progreso M/T/N. Sin números — el color comunica el estado de un vistazo. Detalle en tooltip.</p>
+    <table class="cal">
+      <thead>
+        <tr>
+          <th class="nc">Operador</th>
+          <th>1<br>J</th><th>2<br>V</th><th class="th-we">3<br>S</th><th class="th-we">4<br>D</th>
+          <th class="th-hoy">5<br>L</th><th>6<br>M</th><th>7<br>X</th><th>8<br>J</th><th>9<br>V</th>
+          <th class="th-we">10<br>S</th><th class="th-we">11<br>D</th><th>12<br>L</th><th>13<br>M</th><th>14<br>X</th>
+        </tr>
+        <tr style="background:var(--bg4)">
+          <td class="nc" style="font-size:10px;color:var(--text3);font-weight:600">Cobertura M/T/N</td>
+          <td title="M:3/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fwarn" style="width:75%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:2/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fbad" style="width:50%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td class="td-we" title="M:2/2 T:2/2 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td class="td-we" title="M:2/2 T:1/2 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fbad" style="width:50%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td class="td-hoy" title="M:4/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:4/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:3/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fwarn" style="width:75%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:4/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:4/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td class="td-we" title="M:2/2 T:2/2 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td class="td-we" title="M:2/2 T:2/2 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:3/4 T:3/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fwarn" style="width:75%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fwarn" style="width:75%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:4/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+          <td title="M:4/4 T:4/4 N:2/2"><div class="cb-cell"><div class="cb-row"><span class="cb-lbl">M</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">T</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div><div class="cb-row"><span class="cb-lbl">N</span><div class="cb-track"><div class="cb-fill fok" style="width:100%"></div></div></div></div></td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="nc">Hector Lamus</td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"><span class="b bV">V</span></td><td class="td-we"></td><td class="td-hoy"><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"></td><td class="td-we"></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td></tr>
+        <tr><td class="nc">Mario Saavedra</td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-hoy"><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td></tr>
+        <tr><td class="nc">Ruben Culebras</td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-hoy"><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bT">T</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════ OPCIÓN C ═══════ -->
+  <div class="panel" id="p3">
+    <p class="panel-desc">⭐ Panel de cobertura independiente bajo el calendario. Una fila por turno (M/T/N), una columna por día. Pills con fracción legible, coloreadas por estado.</p>
+
+    <!-- Tabla sin fila de cobertura -->
+    <table class="cal" style="margin-bottom:8px">
+      <thead>
+        <tr>
+          <th class="nc">Operador</th>
+          <th>1<br>J</th><th>2<br>V</th><th class="th-we">3<br>S</th><th class="th-we">4<br>D</th>
+          <th class="th-hoy">5<br>L</th><th>6<br>M</th><th>7<br>X</th><th>8<br>J</th><th>9<br>V</th>
+          <th class="th-we">10<br>S</th><th class="th-we">11<br>D</th><th>12<br>L</th><th>13<br>M</th><th>14<br>X</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="nc">Hector Lamus</td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"><span class="b bV">V</span></td><td class="td-we"></td><td class="td-hoy"><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td class="td-we"></td><td class="td-we"></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td></tr>
+        <tr><td class="nc">Mario Saavedra</td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-we"><span class="b bT">T</span></td><td class="td-hoy"><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td><span class="b bT">T</span></td><td><span class="b bT">T</span></td><td><span class="b bM">M</span></td></tr>
+        <tr><td class="nc">Ruben Culebras</td><td><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-we"><span class="b bM">M</span></td><td class="td-hoy"><span class="b bN">N</span></td><td><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td class="td-we"><span class="b bN">N</span></td><td><span class="b bM">M</span></td><td><span class="b bM">M</span></td><td><span class="b bT">T</span></td></tr>
+      </tbody>
+    </table>
+
+    <!-- Panel cobertura independiente -->
+    <div class="cov-panel">
+      <div class="cov-panel-hdr">
+        <span style="font-size:13px">📊</span>
+        <span class="cov-panel-title">Cobertura diaria</span>
+        <div class="cov-legend">
+          <span class="cov-leg"><span class="cov-leg-dot" style="background:var(--green)"></span>Cumple mínimo</span>
+          <span class="cov-leg"><span class="cov-leg-dot" style="background:var(--amber)"></span>Justo (−1)</span>
+          <span class="cov-leg"><span class="cov-leg-dot" style="background:var(--red)"></span>Insuficiente</span>
+        </div>
+      </div>
+      <div class="cov-grid">
+        <!-- cabecera días -->
+        <div class="cov-spacer">Turno</div>
+        <div class="cov-hdr-cell">1<br>J</div><div class="cov-hdr-cell">2<br>V</div>
+        <div class="cov-hdr-cell we">3<br>S</div><div class="cov-hdr-cell we">4<br>D</div>
+        <div class="cov-hdr-cell hoy">5<br>L</div><div class="cov-hdr-cell">6<br>M</div>
+        <div class="cov-hdr-cell">7<br>X</div><div class="cov-hdr-cell">8<br>J</div>
+        <div class="cov-hdr-cell">9<br>V</div><div class="cov-hdr-cell we">10<br>S</div>
+        <div class="cov-hdr-cell we">11<br>D</div><div class="cov-hdr-cell">12<br>L</div>
+        <div class="cov-hdr-cell">13<br>M</div><div class="cov-hdr-cell">14<br>X</div>
+        <!-- fila Mañana -->
+        <div class="cov-row-lbl"><span style="width:8px;height:8px;border-radius:50%;background:#7eb8f7;display:inline-block;flex-shrink:0"></span>Mañana <small>≥4/2</small></div>
+        <div class="cov-cell"><span class="cpill pwarn">3/4</span></div>
+        <div class="cov-cell"><span class="cpill pbad">2/4</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell hoy"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pwarn">3/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell"><span class="cpill pwarn">3/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <!-- fila Tarde -->
+        <div class="cov-row-lbl"><span style="width:8px;height:8px;border-radius:50%;background:#f7b84f;display:inline-block;flex-shrink:0"></span>Tarde <small>≥4/2</small></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we"><span class="cpill pbad">1/2</span></div>
+        <div class="cov-cell hoy"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell"><span class="cpill pwarn">3/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <div class="cov-cell"><span class="cpill pok">4/4</span></div>
+        <!-- fila Noche -->
+        <div class="cov-row-lbl last-row"><span style="width:8px;height:8px;border-radius:50%;background:#c084fc;display:inline-block;flex-shrink:0"></span>Noche <small>≥2</small></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell hoy last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell we last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+        <div class="cov-cell last-row"><span class="cpill pok">2/2</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function show(idx) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===idx));
+}
+</script>
+</body>
+</html>
