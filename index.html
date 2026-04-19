@@ -1757,31 +1757,39 @@ function AdminView(){
     const {data:inserted,error}=await sb.from('employees').insert(rec).select('id').single();
     if(error){setNewUErr(error.message);setEmpSaving(false);return;}
     // Crear usuario en Supabase Auth via Edge Function
-    let authOk=false,authErrMsg='';
+    let authOk=false,authErrMsg='',authRecovered=false;
     try{
-      const session=(await sb.auth.getSession()).data.session;
-      const authResp=await fetch(`${EF_URL}/manage-auth-user`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
-        body:JSON.stringify({action:'create',email:email.trim(),password:tempPwd,full_name,role})
-      });
-      const authData=await authResp.json();
-      if(authData.auth_id){
-        await sb.from('employees').update({auth_id:authData.auth_id}).eq('id',inserted.id);
-        authOk=true;
+      const sessionRes=await sb.auth.getSession();
+      const session=sessionRes.data.session;
+      if(!session?.access_token){
+        authErrMsg='Sesión del administrador no válida. Vuelve a iniciar sesión.';
       }else{
-        authErrMsg=authData.error||'La cuenta de acceso no pudo crearse automáticamente.';
+        const authResp=await fetch(`${EF_URL}/manage-auth-user`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+          body:JSON.stringify({action:'create',email:email.trim().toLowerCase(),password:tempPwd,full_name,role})
+        });
+        let authData={};
+        try{authData=await authResp.json();}catch(jsonErr){authErrMsg=`Respuesta inválida del servidor Auth (HTTP ${authResp.status})`;}
+        if(authData.auth_id){
+          const{error:linkErr}=await sb.from('employees').update({auth_id:authData.auth_id}).eq('id',inserted.id);
+          if(linkErr){authErrMsg='Cuenta creada pero no pudo vincularse al empleado: '+linkErr.message;}
+          else{authOk=true;authRecovered=!!authData.recovered;}
+        }else if(!authErrMsg){
+          authErrMsg=authData.error||`La cuenta de acceso no pudo crearse (HTTP ${authResp.status})`;
+        }
       }
-    }catch(efErr){authErrMsg='Error de conexión con el servicio de autenticación.';}
+    }catch(efErr){authErrMsg='Error de conexión con el servicio de autenticación: '+(efErr?.message||efErr);}
     // Auto-crear saldo de vacaciones para operadores nuevos
     if(role==='operator'&&inserted?.id){
       await sb.from('vacation_balance').insert({employee_id:inserted.id,year:2026});
     }
-    const {data}=await sb.from('employees').select('*').order('full_name');
-    setEmpList(data||[]);
+    // Refrescar lista — conservar estado previo si el fetch falla (evita que el listado se vacíe)
+    const{data:fresh,error:fetchErr}=await sb.from('employees').select('*').order('full_name');
+    if(!fetchErr&&Array.isArray(fresh))setEmpList(fresh);
     setEmpSaving(false);setShowNE(false);resetNewUser();
     // Mostrar siempre el modal con la contraseña generada — el admin debe comunicarla al empleado
-    setCreatedTempPwd({name:full_name,email:email.trim(),pwd:tempPwd,authOk,authErrMsg});
+    setCreatedTempPwd({name:full_name,email:email.trim(),pwd:tempPwd,authOk,authErrMsg,authRecovered});
   };
 
   const loadAdminReqs=()=>{
@@ -2207,39 +2215,55 @@ function AdminView(){
                   if(newPwd!==confirmPwd){setPwdResetMsg('Las contraseñas no coinciden');return;}
                 }
                 setEmpSaving(true);setPwdResetMsg('');
-                const upd={full_name:editingEmp.full_name,short_name:editingEmp.short_name,email:editingEmp.email||null,username:editingEmp.username,role:editingEmp.role,active:editingEmp.active};
+                const upd={full_name:editingEmp.full_name,short_name:editingEmp.short_name,email:(editingEmp.email||'').toLowerCase()||null,username:editingEmp.username,role:editingEmp.role,active:editingEmp.active};
                 const {error}=await sb.from('employees').update(upd).eq('id',editingEmp.id);
-                if(error){alert('Error al guardar: '+error.message);setEmpSaving(false);return;}
+                if(error){setPwdResetMsg('Error al guardar datos: '+error.message);setEmpSaving(false);return;}
                 if(newPwd){
                   try{
-                    const session=(await sb.auth.getSession()).data.session;
-                    const efAction=editingEmp.auth_id?'update_password':'create';
+                    const sessionRes=await sb.auth.getSession();
+                    const session=sessionRes.data.session;
+                    if(!session?.access_token){
+                      setPwdResetMsg('Datos guardados. Sesión caducada — vuelve a iniciar sesión antes de asignar contraseña.');
+                      setEmpSaving(false);setConfirmPwd('');return;
+                    }
                     const efBody=editingEmp.auth_id
                       ?{action:'update_password',auth_id:editingEmp.auth_id,password:newPwd}
-                      :{action:'create',email:editingEmp.email,password:newPwd,full_name:editingEmp.full_name,role:editingEmp.role};
+                      :{action:'create',email:(editingEmp.email||'').toLowerCase(),password:newPwd,full_name:editingEmp.full_name,role:editingEmp.role};
                     const r=await fetch(`${EF_URL}/manage-auth-user`,{
                       method:'POST',
-                      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session?.access_token}`},
+                      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
                       body:JSON.stringify(efBody)
                     });
-                    const rd=await r.json();
+                    let rd={};
+                    try{rd=await r.json();}catch(jsonErr){rd={error:`Respuesta inválida (HTTP ${r.status})`};}
                     if(rd.error){
-                      setPwdResetMsg('Datos guardados. Error en acceso: '+rd.error);
-                    }else{
-                      // Si se creó cuenta nueva, guardar auth_id
-                      if(rd.auth_id){
-                        await sb.from('employees').update({auth_id:rd.auth_id}).eq('id',editingEmp.id);
+                      setPwdResetMsg('Datos guardados. Error al asignar contraseña: '+rd.error);
+                    }else if(rd.auth_id){
+                      // Guardar auth_id (nueva cuenta o recuperada de auth.users existente)
+                      const{error:linkErr}=await sb.from('employees').update({auth_id:rd.auth_id}).eq('id',editingEmp.id);
+                      if(linkErr){
+                        setPwdResetMsg('Cuenta creada pero no pudo vincularse: '+linkErr.message);
+                      }else{
                         setEditingEmp(p=>({...p,auth_id:rd.auth_id}));
+                        setPwdResetMsg('✓ '+(rd.recovered?'Cuenta existente enlazada y contraseña actualizada':'Cuenta de acceso creada y contraseña asignada'));
                       }
-                      setPwdResetMsg('✓ '+(editingEmp.auth_id?'Contraseña actualizada':'Cuenta de acceso creada y contraseña asignada'));
+                    }else if(rd.ok){
+                      setPwdResetMsg('✓ Contraseña actualizada');
+                    }else{
+                      setPwdResetMsg('Datos guardados pero respuesta inesperada del servicio de Auth');
                     }
-                  }catch(efErr){setPwdResetMsg('Datos guardados pero error al contactar servicio de Auth.');}
+                  }catch(efErr){setPwdResetMsg('Datos guardados pero error de red con el servicio de Auth: '+(efErr?.message||efErr));}
                   setEmpSaving(false);
-                  fetchEmployees().then(d=>{setEmpList(d||[]);});
+                  // Refrescar lista sin clobber — si falla el fetch, conservar estado previo
+                  const{data:fresh,error:fetchErr}=await sb.from('employees').select('*').order('role').order('full_name');
+                  if(!fetchErr&&Array.isArray(fresh))setEmpList(fresh);
                   setConfirmPwd('');
                   return; // mantener modal abierto para mostrar feedback
                 }
-                fetchEmployees().then(d=>{setEmpList(d||[]);});setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');
+                // Sin cambio de contraseña — cerrar modal y refrescar lista
+                const{data:fresh,error:fetchErr}=await sb.from('employees').select('*').order('role').order('full_name');
+                if(!fetchErr&&Array.isArray(fresh))setEmpList(fresh);
+                setEditingEmp(null);setConfirmPwd('');setPwdResetMsg('');
                 setEmpSaving(false);
               }}>{empSaving?'Guardando…':'Guardar cambios'}</button>
             </div>
@@ -2267,7 +2291,7 @@ function AdminView(){
             )}
             <div style={{fontSize:12,color:'var(--text3)',lineHeight:1.6}}>
               {createdTempPwd.authOk
-                ?<>✓ Cuenta de acceso creada. Comunica esta contraseña al empleado de forma segura.<br/>Deberá cambiarla desde <strong>Mi Perfil</strong> en su primer acceso.</>
+                ?<>{createdTempPwd.authRecovered?<>✓ Cuenta existente reenlazada (el email ya estaba en Auth). Contraseña actualizada.</>:<>✓ Cuenta de acceso creada.</>} Comunica esta contraseña al empleado de forma segura.<br/>Deberá cambiarla desde <strong>Mi Perfil</strong> en su primer acceso.</>
                 :<>Guarda la contraseña por si necesitas completar el acceso manualmente.</>
               }
             </div>
@@ -2324,59 +2348,73 @@ function LoginView({onLogin}){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
   const [countdown,setCountdown]=useState(0);
-  const FAIL_KEY='noc_login_fails';
+  // Lockout por email — cada usuario tiene su propio contador, no bloquea a toda la web
+  const FAIL_KEY='noc_login_fails_v2';
   const MAX_FAILS=5;
-  const LOCKOUT_S=300; // 5 minutos de bloqueo tras MAX_FAILS intentos fallidos
+  const LOCKOUT_S=180; // 3 minutos de bloqueo tras MAX_FAILS intentos fallidos consecutivos
 
-  // Restaurar bloqueo si existe al montar
+  // Helpers para leer/escribir el mapa de fallos por email
+  const loadFails=()=>{try{return JSON.parse(localStorage.getItem(FAIL_KEY)||'{}');}catch(ex){return{};}};
+  const saveFails=(m)=>{try{localStorage.setItem(FAIL_KEY,JSON.stringify(m));}catch(ex){}};
+  const normEmail=(s)=>(s||'').trim().toLowerCase();
+
+  // Comprobar si el email actual está bloqueado (recalcula cuando cambia email)
   useEffect(()=>{
-    try{
-      const s=JSON.parse(localStorage.getItem(FAIL_KEY)||'{}');
-      if(s.until&&Date.now()<s.until){
-        const rem=Math.ceil((s.until-Date.now())/1000);
-        setCountdown(rem);
-      }
-    }catch(ex){}
-  },[]);
+    const em=normEmail(email);
+    if(!em){setCountdown(0);return;}
+    const m=loadFails();
+    const e=m[em];
+    if(e?.until&&Date.now()<e.until){
+      setCountdown(Math.ceil((e.until-Date.now())/1000));
+    }else{
+      setCountdown(0);
+      // limpiar entrada caducada
+      if(e?.until&&Date.now()>=e.until){delete m[em];saveFails(m);}
+    }
+  },[email]);
 
-  // Countdown timer
+  // Countdown timer — al llegar a 0, resetea el contador del email actual
   useEffect(()=>{
     if(countdown<=0)return;
     const iv=setInterval(()=>{
       setCountdown(c=>{
-        if(c<=1){clearInterval(iv);try{localStorage.removeItem(FAIL_KEY);}catch(ex){}return 0;}
+        if(c<=1){
+          clearInterval(iv);
+          const em=normEmail(email);
+          const m=loadFails();
+          if(m[em]){delete m[em];saveFails(m);}
+          return 0;
+        }
         return c-1;
       });
     },1000);
     return()=>clearInterval(iv);
-  },[countdown]);
+  },[countdown,email]);
 
   const handleLogin=async(e)=>{
     e.preventDefault();
-    if(countdown>0){setError(`Acceso bloqueado. Espera ${countdown}s`);return;}
+    if(countdown>0){setError(`Acceso bloqueado para este usuario. Espera ${countdown}s`);return;}
     if(!email.trim()||!password){setError('Introduce email y contraseña');return;}
+    const em=normEmail(email);
     setLoading(true);setError('');
 
     // Autenticar con Supabase Auth
-    const {data:authData,error:authErr}=await sb.auth.signInWithPassword({
-      email:email.trim().toLowerCase(),password
-    });
+    const {data:authData,error:authErr}=await sb.auth.signInWithPassword({email:em,password});
 
     if(authErr||!authData?.user){
       setLoading(false);
-      try{
-        const s=JSON.parse(localStorage.getItem(FAIL_KEY)||'{}');
-        const fails=(s.fails||0)+1;
-        if(fails>=MAX_FAILS){
-          const until=Date.now()+LOCKOUT_S*1000;
-          localStorage.setItem(FAIL_KEY,JSON.stringify({fails,until}));
-          setCountdown(LOCKOUT_S);
-          setError(`Demasiados intentos fallidos. Acceso bloqueado ${LOCKOUT_S}s.`);
-        }else{
-          localStorage.setItem(FAIL_KEY,JSON.stringify({fails}));
-          setError(`Credenciales incorrectas (${fails}/${MAX_FAILS} intentos)`);
-        }
-      }catch(ex){setError('Credenciales incorrectas');}
+      const m=loadFails();
+      const entry=m[em]||{fails:0};
+      entry.fails=(entry.fails||0)+1;
+      if(entry.fails>=MAX_FAILS){
+        entry.until=Date.now()+LOCKOUT_S*1000;
+        m[em]=entry;saveFails(m);
+        setCountdown(LOCKOUT_S);
+        setError(`Demasiados intentos fallidos para ${em}. Bloqueado ${LOCKOUT_S}s.`);
+      }else{
+        m[em]=entry;saveFails(m);
+        setError(`Credenciales incorrectas (${entry.fails}/${MAX_FAILS} intentos para ${em})`);
+      }
       return;
     }
 
@@ -2387,12 +2425,13 @@ function LoginView({onLogin}){
 
     if(!user){
       await sb.auth.signOut();
-      setError('Cuenta no encontrada. Contacta con el Responsable NOC.');
+      setError('Cuenta no encontrada o inactiva. Contacta con el Responsable NOC.');
       return;
     }
 
-    // Limpiar intentos fallidos — sesión gestionada por Supabase Auth, no localStorage
-    try{localStorage.removeItem(FAIL_KEY);}catch(ex){}
+    // Limpiar intentos fallidos de este email al loguear con éxito
+    const m=loadFails();
+    if(m[em]){delete m[em];saveFails(m);}
     await logAudit('login',{username:user.username,role:user.role},user.id);
     onLogin(user);
   };
@@ -2407,7 +2446,7 @@ function LoginView({onLogin}){
           <p>Avatel Telecom · Network Operations Center</p>
         </div>
         {error&&<div className="login-err">⚠ {error}</div>}
-        {locked&&<div style={{textAlign:'center',fontSize:12,color:'var(--amber)',marginBottom:10}}>🔒 Bloqueado — {countdown}s</div>}
+        {locked&&<div style={{textAlign:'center',fontSize:12,color:'var(--amber)',marginBottom:10}}>🔒 {email||'este usuario'} bloqueado — {countdown}s</div>}
         <form onSubmit={handleLogin}>
           <div className="fg"><label className="fl">Correo electrónico</label>
             <input className="fi" type="email" placeholder="usuario@avatel.es" value={email} onChange={e=>setEmail(e.target.value)} autoFocus autoComplete="email" disabled={locked}/>
@@ -3485,7 +3524,7 @@ function App(){
   const [page,setPage]=useState('today');
   const [adminOpen,setAdminOpen]=useState(true);
 
-  // Verificar sesión Supabase Auth en cada arranque
+  // Verificar sesión Supabase Auth en cada arranque + escuchar cambios (token expirado / logout remoto)
   useEffect(()=>{
     sb.auth.getSession().then(async({data:{session}})=>{
       if(session?.user){
@@ -3499,8 +3538,16 @@ function App(){
       }
       setAuthChecked(true);
     });
+    // Listener: si el token caduca o se cierra sesión en otra pestaña, limpiar estado
+    const{data:{subscription}}=sb.auth.onAuthStateChange((event,session)=>{
+      if(event==='SIGNED_OUT'||(event==='TOKEN_REFRESHED'&&!session)){
+        setCurrentUser(null);
+        setPage('today');
+      }
+    });
     // Cargar festivos desde BD al arrancar — actualiza festDates module-level
     fetchFestivos();
+    return()=>{subscription?.unsubscribe?.();};
   },[]);
 
   const isAdmin=currentUser&&(currentUser.role==='admin'||currentUser.role==='manager'||currentUser.role==='coordinator');
